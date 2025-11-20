@@ -32,7 +32,63 @@ import { A2AExpressApp } from "@a2a-js/sdk/server/express";
 import { A2AClient } from "@a2a-js/sdk/client";
 
 // NOTE: NodeNext requires .js extension for local imports in TS sources
-import type { InvoiceMessage } from "../../types/invoice.js";
+import type { InvoiceMessage, PurchaseOrderMessage, POAcceptanceMessage, WarehouseReceiptMessage } from "../../types/invoice.js";
+
+/**
+ * Payment Configuration Helper
+ * Provides backward compatibility while supporting new naming
+ * CRITICAL: Buyer and Seller must have matching configuration!
+ */
+function getPaymentConfig() {
+  // Currency: PAYMENT_CURRENCY (new) or INVOICE_CURRENCY (backward compat)
+  const currency = process.env.PAYMENT_CURRENCY || 'ALGO';
+  
+  // Total trade amount: TRADE_AMOUNT (must match seller!)
+  const tradeAmount = parseFloat(process.env.TRADE_AMOUNT || '10.0');
+  
+  // Stage percentages (must match seller!)
+  const poPercent = parseFloat(process.env.PAYMENT_STAGE_PO_PERCENT || '20');
+  const invoicePercent = parseFloat(process.env.PAYMENT_STAGE_INVOICE_PERCENT || '50');
+  const receiptPercent = parseFloat(process.env.PAYMENT_STAGE_RECEIPT_PERCENT || '30');
+  
+  // Calculate expected stage amounts
+  const poAmount = (tradeAmount * poPercent) / 100;
+  const invoiceAmount = (tradeAmount * invoicePercent) / 100;
+  const receiptAmount = (tradeAmount * receiptPercent) / 100;
+  
+  return {
+    currency,
+    tradeAmount,
+    stages: {
+      po: { percent: poPercent, amount: poAmount },
+      invoice: { percent: invoicePercent, amount: invoiceAmount },
+      receipt: { percent: receiptPercent, amount: receiptAmount }
+    }
+  };
+}
+
+/**
+ * Validate invoice amount matches expected configuration
+ */
+function validateInvoiceAmount(
+  receivedAmount: number,
+  expectedAmount: number,
+  tolerance: number = 0.01
+): { valid: boolean; message: string } {
+  const difference = Math.abs(receivedAmount - expectedAmount);
+  
+  if (difference <= tolerance) {
+    return {
+      valid: true,
+      message: `✓ Amount verified: ${receivedAmount} matches expected ${expectedAmount}`
+    };
+  }
+  
+  return {
+    valid: false,
+    message: `✗ Amount mismatch: received ${receivedAmount}, expected ${expectedAmount} (diff: ${difference})`
+  };
+}
 
 /**
  * REAL WORKING ALGORAND PAYMENT FUNCTION
@@ -194,11 +250,183 @@ class BuyerAgentExecutor implements AgentExecutor {
 
       let responseText = "Hello! I'm Tommy Hilfiger Agent, a buyer agent. I can help you find and connect with seller agents.";
 
-      // ---- NEW: CHECK FOR INVOICE DATA PARTS FIRST ----
+      // ---- CHECK FOR TRADE DOCUMENT DATA PARTS (PO, Invoice, or Receipt) ----
       const dataParts = userMessage.parts.filter((p) => p.kind === "data");
 
       if (dataParts.length > 0) {
-        console.log("[BuyerAgent] 📄 Received invoice from seller...");
+        const docData = (dataParts[0] as any).data;
+        const stage = docData.stage || (docData.invoice ? 2 : 0); // PO=1, Invoice=2, Receipt=3
+        
+        // Get payment config for validation
+        const paymentConfig = getPaymentConfig();
+
+        // ========== STAGE 1: PURCHASE ORDER (20%) ==========
+        if (stage === 1) {
+          const poData = docData as PurchaseOrderMessage;
+          console.log("[BuyerAgent] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+          console.log("[BuyerAgent] 📋 STAGE 1: PURCHASE ORDER RECEIVED");
+          console.log("[BuyerAgent] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+          console.log(`[BuyerAgent] PO ID: ${poData.poId}`);
+          console.log(`[BuyerAgent] Amount: ${poData.amount} ${poData.currency} (${paymentConfig.stages.po.percent}%)`);
+          console.log(`[BuyerAgent] Trade Total: ${poData.tradeTotal} ${poData.currency}`);
+
+          eventBus.publish({
+            kind: "status-update",
+            taskId, contextId,
+            status: {
+              state: "working",
+              message: {
+                kind: "message", role: "agent", messageId: uuidv4(),
+                parts: [{ kind: "text", text: "📋 Processing Purchase Order (Stage 1)..." }],
+                taskId, contextId,
+              },
+              timestamp: new Date().toISOString(),
+            },
+            final: false,
+          } as TaskStatusUpdateEvent);
+
+          try {
+            // Validate amount
+            const validation = validateInvoiceAmount(poData.amount, paymentConfig.stages.po.amount);
+            if (!validation.valid) {
+              throw new Error(`PO amount mismatch: ${validation.message}`);
+            }
+            console.log(`[BuyerAgent] ${validation.message}`);
+
+            // Fetch and verify seller agent (same as invoice flow)
+            eventBus.publish({
+              kind: "status-update",
+              taskId, contextId,
+              status: {
+                state: "working",
+                message: {
+                  kind: "message", role: "agent", messageId: uuidv4(),
+                  parts: [{ kind: "text", text: "🔍 Fetching seller agent credentials..." }],
+                  taskId, contextId,
+                },
+                timestamp: new Date().toISOString(),
+              },
+              final: false,
+            } as TaskStatusUpdateEvent);
+
+            const sellerAgentUrl = process.env.SELLER_AGENT_URL || "http://localhost:8080";
+            const client = new A2AClient(sellerAgentUrl);
+            const sellerCard = await client.getAgentCard();
+            console.log(`[BuyerAgent] Fetched seller card: ${sellerCard.name}`);
+
+            // vLEI Verification
+            eventBus.publish({
+              kind: "status-update",
+              taskId, contextId,
+              status: {
+                state: "working",
+                message: {
+                  kind: "message", role: "agent", messageId: uuidv4(),
+                  parts: [{ kind: "text", text: "🔐 Validating vLEI credentials..." }],
+                  taskId, contextId,
+                },
+                timestamp: new Date().toISOString(),
+              },
+              final: false,
+            } as TaskStatusUpdateEvent);
+
+            const verificationUrl = process.env.VERIFICATION_URL || 'http://localhost:4000';
+            const verificationEndpoint = `${verificationUrl}/api/verify/seller`;
+            const verificationResponse = await fetch(verificationEndpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(120000)
+            });
+
+            if (!verificationResponse.ok) {
+              throw new Error(`Verification API returned ${verificationResponse.status}`);
+            }
+
+            const validationResult = await verificationResponse.json();
+            const delegationChainVerified = validationResult.validation?.delegationChain?.verified === true;
+            const agentKELVerified = validationResult.validation?.kelVerification?.agentKEL?.verified === true;
+            const oorHolderKELVerified = validationResult.validation?.kelVerification?.oorHolderKEL?.verified === true;
+            const notRevoked = validationResult.validation?.credentialStatus?.revoked === false;
+            const notExpired = validationResult.validation?.credentialStatus?.expired === false;
+            const isDelegationValid = validationResult.success === true && delegationChainVerified && agentKELVerified && oorHolderKELVerified && notRevoked && notExpired;
+
+            console.log(`[BuyerAgent] vLEI Verification: ${isDelegationValid ? '✅ PASSED' : '❌ FAILED'}`);
+
+            if (isDelegationValid) {
+              // Execute Payment
+              eventBus.publish({
+                kind: "status-update",
+                taskId, contextId,
+                status: {
+                  state: "working",
+                  message: {
+                    kind: "message", role: "agent", messageId: uuidv4(),
+                    parts: [{ kind: "text", text: "💳 Executing 20% payment on Algorand TestNet..." }],
+                    taskId, contextId,
+                  },
+                  timestamp: new Date().toISOString(),
+                },
+                final: false,
+              } as TaskStatusUpdateEvent);
+
+              const payment = await executeAlgorandPayment({
+                toAddress: poData.destinationAccount.walletAddress,
+                amount: poData.amount
+              });
+
+              console.log(`[BuyerAgent] ✅ PO PAYMENT SUCCESSFUL: ${payment.txId}`);
+
+              responseText = `
+✅ PURCHASE ORDER PAYMENT SUCCESSFUL
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 PURCHASE ORDER DETAILS (STAGE 1)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PO ID:            ${poData.poId}
+Stage:            1 (Purchase Order - Initial Payment)
+Amount:           ${poData.currency} ${poData.amount.toFixed(2)} (${paymentConfig.stages.po.percent}%)
+Trade Total:      ${poData.currency} ${poData.tradeTotal}
+Sender Agent:     ${poData.senderAgent.name}
+Sender AID:       ${poData.senderAgent.agentAID}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔐 vLEI VERIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Verification Status: ✓ APPROVED
+Agent Verified:      ${validationResult.agent}
+OOR Holder:          ${validationResult.oorHolder}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💳 PAYMENT EXECUTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Network:          Algorand TestNet
+Transaction ID:   ${payment.txId}
+Confirmed:        Block ${payment.confirmedRound}
+Timestamp:        ${new Date().toISOString()}
+
+🔗 View on Explorer:
+   https://testnet.explorer.perawallet.app/tx/${payment.txId}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              `.trim();
+
+            } else {
+              responseText = `❌ PURCHASE ORDER REJECTED - vLEI verification failed`;
+            }
+          } catch (error: any) {
+            console.error("[BuyerAgent] Error processing PO:", error);
+            responseText = `❌ Error processing Purchase Order: ${error?.message ?? String(error)}`;
+          }
+
+        // ========== STAGE 2: INVOICE (50%) ==========
+        } else if (stage === 2 || docData.invoice) {
+          const invoiceData = docData as InvoiceMessage;
+          console.log("[BuyerAgent] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+          console.log("[BuyerAgent] 📄 STAGE 2: INVOICE RECEIVED");
+          console.log("[BuyerAgent] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         eventBus.publish({
           kind: "status-update",
@@ -237,7 +465,8 @@ class BuyerAgentExecutor implements AgentExecutor {
             final: false,
           } as TaskStatusUpdateEvent);
 
-          const sellerAgentUrl = "http://localhost:8080";
+          const sellerAgentUrl = process.env.SELLER_AGENT_URL || "http://localhost:8080";
+          console.log(`[BuyerAgent] Connecting to seller agent at: ${sellerAgentUrl}`);
           const client = new A2AClient(sellerAgentUrl);
           const sellerCard = await client.getAgentCard();
 
@@ -260,7 +489,13 @@ class BuyerAgentExecutor implements AgentExecutor {
             final: false,
           } as TaskStatusUpdateEvent);
 
-          const verificationResponse = await fetch('http://localhost:4000/api/verify/seller', {
+          // Use verification URL from environment or default
+          const verificationUrl = process.env.VERIFICATION_URL || 'http://localhost:4000';
+          const verificationEndpoint = `${verificationUrl}/api/verify/seller`;
+          
+          console.log(`[BuyerAgent] Verifying seller at: ${verificationEndpoint}`);
+          
+          const verificationResponse = await fetch(verificationEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: AbortSignal.timeout(120000)
@@ -545,6 +780,165 @@ Timestamp:           ${validationResult.timestamp}
           console.error("[BuyerAgent] Error processing invoice:", error);
           responseText = `❌ Error processing invoice: ${error?.message ?? String(error)}`;
         }
+
+        // ========== STAGE 3: WAREHOUSE RECEIPT (30%) ==========
+        } else if (stage === 3) {
+          const receiptData = docData as WarehouseReceiptMessage;
+          console.log("[BuyerAgent] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+          console.log("[BuyerAgent] 📦 STAGE 3: WAREHOUSE RECEIPT RECEIVED");
+          console.log("[BuyerAgent] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+          console.log(`[BuyerAgent] Receipt ID: ${receiptData.receiptId}`);
+          console.log(`[BuyerAgent] Amount: ${receiptData.amount} ${receiptData.currency} (${paymentConfig.stages.receipt.percent}%)`);
+
+          eventBus.publish({
+            kind: "status-update",
+            taskId, contextId,
+            status: {
+              state: "working",
+              message: {
+                kind: "message", role: "agent", messageId: uuidv4(),
+                parts: [{ kind: "text", text: "📦 Processing Warehouse Receipt (Stage 3)..." }],
+                taskId, contextId,
+              },
+              timestamp: new Date().toISOString(),
+            },
+            final: false,
+          } as TaskStatusUpdateEvent);
+
+          try {
+            const validation = validateInvoiceAmount(receiptData.amount, paymentConfig.stages.receipt.amount);
+            if (!validation.valid) {
+              throw new Error(`Receipt amount mismatch: ${validation.message}`);
+            }
+            console.log(`[BuyerAgent] ${validation.message}`);
+
+            eventBus.publish({
+              kind: "status-update",
+              taskId, contextId,
+              status: {
+                state: "working",
+                message: {
+                  kind: "message", role: "agent", messageId: uuidv4(),
+                  parts: [{ kind: "text", text: "🔍 Fetching seller agent credentials..." }],
+                  taskId, contextId,
+                },
+                timestamp: new Date().toISOString(),
+              },
+              final: false,
+            } as TaskStatusUpdateEvent);
+
+            const sellerAgentUrl = process.env.SELLER_AGENT_URL || "http://localhost:8080";
+            const client = new A2AClient(sellerAgentUrl);
+            const sellerCard = await client.getAgentCard();
+            console.log(`[BuyerAgent] Fetched seller card: ${sellerCard.name}`);
+
+            eventBus.publish({
+              kind: "status-update",
+              taskId, contextId,
+              status: {
+                state: "working",
+                message: {
+                  kind: "message", role: "agent", messageId: uuidv4(),
+                  parts: [{ kind: "text", text: "🔐 Validating vLEI credentials..." }],
+                  taskId, contextId,
+                },
+                timestamp: new Date().toISOString(),
+              },
+              final: false,
+            } as TaskStatusUpdateEvent);
+
+            const verificationUrl = process.env.VERIFICATION_URL || 'http://localhost:4000';
+            const verificationEndpoint = `${verificationUrl}/api/verify/seller`;
+            const verificationResponse = await fetch(verificationEndpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(120000)
+            });
+
+            if (!verificationResponse.ok) {
+              throw new Error(`Verification API returned ${verificationResponse.status}`);
+            }
+
+            const validationResult = await verificationResponse.json();
+            const delegationChainVerified = validationResult.validation?.delegationChain?.verified === true;
+            const agentKELVerified = validationResult.validation?.kelVerification?.agentKEL?.verified === true;
+            const oorHolderKELVerified = validationResult.validation?.kelVerification?.oorHolderKEL?.verified === true;
+            const notRevoked = validationResult.validation?.credentialStatus?.revoked === false;
+            const notExpired = validationResult.validation?.credentialStatus?.expired === false;
+            const isDelegationValid = validationResult.success === true && delegationChainVerified && agentKELVerified && oorHolderKELVerified && notRevoked && notExpired;
+
+            console.log(`[BuyerAgent] vLEI Verification: ${isDelegationValid ? '✅ PASSED' : '❌ FAILED'}`);
+
+            if (isDelegationValid) {
+              eventBus.publish({
+                kind: "status-update",
+                taskId, contextId,
+                status: {
+                  state: "working",
+                  message: {
+                    kind: "message", role: "agent", messageId: uuidv4(),
+                    parts: [{ kind: "text", text: "💳 Executing 30% payment on Algorand TestNet..." }],
+                    taskId, contextId,
+                  },
+                  timestamp: new Date().toISOString(),
+                },
+                final: false,
+              } as TaskStatusUpdateEvent);
+
+              const payment = await executeAlgorandPayment({
+                toAddress: receiptData.destinationAccount.walletAddress,
+                amount: receiptData.amount
+              });
+
+              console.log(`[BuyerAgent] ✅ RECEIPT PAYMENT SUCCESSFUL: ${payment.txId}`);
+
+              responseText = `
+✅ WAREHOUSE RECEIPT PAYMENT SUCCESSFUL
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 WAREHOUSE RECEIPT DETAILS (STAGE 3)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Receipt ID:       ${receiptData.receiptId}
+Stage:            3 (Warehouse Receipt - Final Payment)
+Amount:           ${receiptData.currency} ${receiptData.amount.toFixed(2)} (${paymentConfig.stages.receipt.percent}%)
+Trade Total:      ${receiptData.currency} ${receiptData.tradeTotal}
+Sender Agent:     ${receiptData.senderAgent.name}
+Sender AID:       ${receiptData.senderAgent.agentAID}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔐 vLEI VERIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Verification Status: ✓ APPROVED
+Agent Verified:      ${validationResult.agent}
+OOR Holder:          ${validationResult.oorHolder}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💳 PAYMENT EXECUTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Network:          Algorand TestNet
+Transaction ID:   ${payment.txId}
+Confirmed:        Block ${payment.confirmedRound}
+Timestamp:        ${new Date().toISOString()}
+
+🔗 View on Explorer:
+   https://testnet.explorer.perawallet.app/tx/${payment.txId}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ TRADE COMPLETE: All 3 stages paid (100%)
+              `.trim();
+
+            } else {
+              responseText = `❌ WAREHOUSE RECEIPT REJECTED - vLEI verification failed`;
+            }
+          } catch (error: any) {
+            console.error("[BuyerAgent] Error processing warehouse receipt:", error);
+            responseText = `❌ Error processing Warehouse Receipt: ${error?.message ?? String(error)}`;
+          }
+        }
       } else if (userText.includes("fetch") && userText.includes("seller")) {
         // Fetch seller agent card
         console.log("[BuyerAgent] Fetching seller agent card...");
@@ -677,10 +1071,12 @@ I can help you discover and connect with seller agents!
 // --- Server Setup ---
 
 // Tommy Hilfiger Buyer Agent Card
-const tommyCardPath = path.resolve(
-  //"C:/CHAINAIM3003/mcp-servers/LegentUI/A2A/agent-cards/tommyBuyerAgent-card.json"
-  "C:/CHAINAIM3003/mcp-servers/Legent3/Legent/A2A/agent-cards/tommyBuyerAgent-card.json"
-);
+// Use environment variable if set, otherwise use relative path
+const tommyCardPath = process.env.AGENT_CARD_PATH 
+  ? path.resolve(__dirname, process.env.AGENT_CARD_PATH)
+  : path.resolve(__dirname, '../../../agent-cards/tommyBuyerAgent-card.json');
+
+console.log(`[BuyerAgent] Loading agent card from: ${tommyCardPath}`);
 
 const tommyHilfigerAgentCard: AgentCard = JSON.parse(
   fs.readFileSync(tommyCardPath, "utf8")
@@ -705,8 +1101,11 @@ async function main() {
   const app = express();
 
   // Add CORS middleware to allow requests from UI
+  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  console.log(`[BuyerAgent] CORS enabled for: ${corsOrigin}`);
+  
   app.use(cors({
-    origin: 'http://localhost:3000', // Allow UI origin
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'OPTIONS'],
     credentials: true
   }));

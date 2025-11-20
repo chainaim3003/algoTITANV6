@@ -1,744 +1,1761 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useState, useEffect, useRef } from "react"
+import {
+  Shield,
+  CheckCircle,
+  Building2,
+  Package,
+  Lock,
+  Building,
+  User,
+  Check,
+  Loader2,
+  Send,
+  MessageSquare,
+  XCircle,
+  Search,
+  UserCheck,
+  ShieldCheck,
+  BadgeCheck,
+  ArrowRight,
+  Bot,
+  FileText,
+  DollarSign,
+  CheckCircle2,
+  XOctagon,
+  Paperclip,
+  Download,
+  AlertCircle,
+  Receipt,
+  Warehouse,
+  ExternalLink,
+  CreditCard,
+  Wallet,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+} from "lucide-react"
 
-interface Message {
+// ============================================
+// API CONFIGURATION
+// ============================================
+const USE_MOCK_VERIFICATION = true // Set to false for real API calls
+const API_BASE_URL = 'http://localhost:4000'
+
+// Get marketplace fee from environment (percentage like 0.25) and convert to decimal (0.0025)
+const MARKETPLACE_FEE = parseFloat(process.env.NEXT_PUBLIC_MARKETPLACE_FEE || '0.25')
+const PLATFORM_FEE_PERCENTAGE = MARKETPLACE_FEE / 100 // Convert 0.25% to 0.0025
+
+// Get tax rate from environment (percentage like 18)
+const TAX_RATE = parseFloat(process.env.NEXT_PUBLIC_TAX_RATE || '18')
+const TAX_RATE_DECIMAL = TAX_RATE / 100 // Convert 18% to 0.18
+
+// Algorand Network Configuration
+const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID || 'testnet-v1.0'
+const ALGORAND_NETWORK = process.env.NEXT_PUBLIC_ALGORAND_NETWORK || 'testnet'
+const ALGORAND_API_URL = process.env.NEXT_PUBLIC_ALGORAND_API_URL || 'https://testnet-api.algonode.cloud'
+
+// Payment Configuration
+const PAYMENT_CURRENCY = process.env.NEXT_PUBLIC_PAYMENT_CURRENCY || 'ALGO'
+const USDC_ALGO_TESTNET_ASSET_ID = parseInt(process.env.NEXT_PUBLIC_USDC_ALGO_TESTNET_ASSET_ID || '10458941')
+
+// Get wallet addresses from environment or use defaults for demo
+const BUYER_WALLET = process.env.NEXT_PUBLIC_BUYER_WALLET || 'GBUYERWALLETADDRESSEXAMPLE123456789'
+const SELLER_WALLET = process.env.NEXT_PUBLIC_SELLER_WALLET || 'GSELLERWALLETADDRESSEXAMPLE123456789'
+const MARKETPLACE_WALLET = process.env.NEXT_PUBLIC_MARKETPLACE_WALLET || 'GMARKETPLACEWALLETADDRESSEXAMPLE123456789'
+
+// Get secret keys from environment (for transaction signing)
+const BUYER_SECRET_KEY = process.env.NEXT_PUBLIC_BUYER_SECRET_KEY || ''
+const SELLER_SECRET_KEY = process.env.NEXT_PUBLIC_SELLER_SECRET_KEY || ''
+
+// Unique ID generator
+let messageIdCounter = 0
+const generateUniqueId = () => `msg-${Date.now()}-${messageIdCounter++}`
+
+// ============================================
+// INTERFACES
+// ============================================
+interface AgentCard {
+  alias: string
+  engagementContextRole: string
+  agentType: string
+  verified?: boolean
+  timestamp?: string
+  name?: string
+  agentAID?: string
+  oorRole?: string
+}
+
+interface ChatMessage {
+  id: string
   text: string
-  sender: 'user' | 'agent'
+  type: 'user' | 'agent'
   timestamp: Date
 }
 
-interface AgentData {
+interface BusinessMessage {
   id: string
-  name: string
-  role: string
-  credentials: string[]
-  vleiVerified: boolean
-  delegations: string[]
+  from: 'buyer' | 'seller'
+  to: 'buyer' | 'seller'
+  type: 'po' | 'po_response' | 'payment' | 'invoice' | 'invoice_payment' | 'warehouse_receipt' | 'receipt_payment'
+  content: string
+  attachment?: POData | PaymentData | InvoiceData | WarehouseReceiptData
+  timestamp: Date
+  verified: boolean
+  status: 'pending' | 'verified' | 'rejected'
 }
 
-export default function AgenticFlowPage() {
-  // Buyer Agent State
-  const [buyerMessages, setBuyerMessages] = useState<Message[]>([
-    { text: "👋 Hello! I'm your Buyer Agent. Type 'fetch my agent' to get started.", sender: 'agent', timestamp: new Date() }
-  ])
-  const [buyerInput, setBuyerInput] = useState('')
-  const [buyerAgentData, setBuyerAgentData] = useState<AgentData | null>(null)
-  const [sellerAgentFromBuyerData, setSellerAgentFromBuyerData] = useState<AgentData | null>(null)
+interface POData {
+  poNumber: string
+  items: Array<{
+    name: string
+    quantity: number
+    unitPrice: number
+    total: number
+  }>
+  totalAmount: number
+  deliveryTerms: string
+  paymentTerms: string
+  deliveryDate: string
+}
 
-  // Seller Agent State
-  const [sellerMessages, setSellerMessages] = useState<Message[]>([
-    { text: "👋 Hello! I'm your Seller Agent. Type 'fetch my agent' to get started.", sender: 'agent', timestamp: new Date() }
-  ])
-  const [sellerInput, setSellerInput] = useState('')
-  const [sellerAgentData, setSellerAgentData] = useState<AgentData | null>(null)
-  const [buyerAgentFromSellerData, setBuyerAgentFromSellerData] = useState<AgentData | null>(null)
+interface PaymentData {
+  amount: number
+  platformFee: number
+  totalPaid: number
+  currency: string
+  transactionHash: string
+  peraExplorerLink: string
+  status: 'pending' | 'completed' | 'failed'
+  paymentType: 'po_acceptance' | 'invoice' | 'warehouse_receipt'
+}
 
-  // Verification State
-  const [verificationStatus, setVerificationStatus] = useState<{
-    buyerVerified: boolean
-    sellerVerified: boolean
-    mutualTrustEstablished: boolean
-  }>({
-    buyerVerified: false,
-    sellerVerified: false,
-    mutualTrustEstablished: false
+interface InvoiceData {
+  invoiceNumber: string
+  poNumber: string
+  items: Array<{
+    name: string
+    quantity: number
+    unitPrice: number
+    total: number
+  }>
+  subtotal: number
+  tax: number
+  totalAmount: number
+  dueDate: string
+  notes: string
+}
+
+interface WarehouseReceiptData {
+  receiptNumber: string
+  poNumber: string
+  invoiceNumber: string
+  items: Array<{
+    name: string
+    quantity: number
+    warehouseLocation: string
+  }>
+  receivedDate: string
+  inspector: string
+  notes: string
+}
+
+type AgenticStep =
+  | 'idle'
+  | 'fetching-buyer-agent'
+  | 'buyer-agent-fetched'
+  | 'fetching-seller-agent'
+  | 'seller-agent-fetched'
+  | 'verifying-seller-agent'
+  | 'seller-agent-verified'
+  | 'business-ready'
+
+type SellerAgenticStep =
+  | 'idle'
+  | 'fetching-seller-agent'
+  | 'seller-agent-fetched'
+  | 'fetching-buyer-agent'
+  | 'buyer-agent-fetched'
+  | 'verifying-buyer-agent'
+  | 'buyer-agent-verified'
+  | 'business-ready'
+
+// ============================================
+// MOCK DATA
+// ============================================
+const LEI_DATA = {
+  tommy: {
+    name: "TOMMY HILFIGER EUROPE B.V.",
+    lei: "54930012QJWZMYHNJW95",
+    address: "Danzigerkade 165, 1013 AP Amsterdam, Netherlands",
+  },
+  jupiter: {
+    name: "JUPITER KNITTING COMPANY",
+    lei: "3358004DXAMRWRUIYJ05",
+    address: "5/22, Textile Park, Tiruppur, Tamil Nadu, India",
+  },
+}
+
+export default function AgenticFlow() {
+  // ============================================
+  // WALLET STATE
+  // ============================================
+  const [showBuyerWallet, setShowBuyerWallet] = useState(false)
+  const [showSellerWallet, setShowSellerWallet] = useState(false)
+  const [showPlatformWallet, setShowPlatformWallet] = useState(false)
+  const [buyerBalance, setBuyerBalance] = useState<string | null>(null)
+  const [sellerBalance, setSellerBalance] = useState<string | null>(null)
+  const [platformBalance, setPlatformBalance] = useState<string | null>(null)
+  const [loadingBuyerBalance, setLoadingBuyerBalance] = useState(false)
+  const [loadingSellerBalance, setLoadingSellerBalance] = useState(false)
+  const [loadingPlatformBalance, setLoadingPlatformBalance] = useState(false)
+
+  // ============================================
+  // BUYER SIDE STATE
+  // ============================================
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [inputMessage, setInputMessage] = useState("")
+  const [agenticStep, setAgenticStep] = useState<AgenticStep>('idle')
+  const [showBuyerCardDetails, setShowBuyerCardDetails] = useState(false)
+  const [showSellerCardDetails, setShowSellerCardDetails] = useState(false)
+  const [buyerAgentData, setBuyerAgentData] = useState<AgentCard | null>(null)
+  const [sellerAgentFromBuyerData, setSellerAgentFromBuyerData] = useState<AgentCard | null>(null)
+  const [sellerAgentVerified, setSellerAgentVerified] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // ============================================
+  // SELLER SIDE STATE
+  // ============================================
+  const [sellerChatMessages, setSellerChatMessages] = useState<ChatMessage[]>([])
+  const [sellerInputMessage, setSellerInputMessage] = useState("")
+  const [sellerAgenticStep, setSellerAgenticStep] = useState<SellerAgenticStep>('idle')
+  const [showSellerAgentCardDetails, setShowSellerAgentCardDetails] = useState(false)
+  const [showBuyerAgentCardDetails, setShowBuyerAgentCardDetails] = useState(false)
+  const [sellerAgentData, setSellerAgentData] = useState<AgentCard | null>(null)
+  const [buyerAgentFromSellerData, setBuyerAgentFromSellerData] = useState<AgentCard | null>(null)
+  const [buyerAgentVerified, setBuyerAgentVerified] = useState(false)
+  const chatEndRefSeller = useRef<HTMLDivElement>(null)
+
+  // ============================================
+  // BUSINESS MESSAGING STATE
+  // ============================================
+  const [businessMessages, setBusinessMessages] = useState<BusinessMessage[]>([])
+  const [showPOForm, setShowPOForm] = useState(false)
+  const [poData, setPOData] = useState<POData>({
+    poNumber: `PO-${Date.now()}`,
+    items: [{ name: 'Organic Cotton T-Shirts', quantity: 1000, unitPrice: 100, total: 100000 }],
+    totalAmount: 100000,
+    deliveryTerms: 'FOB Mumbai Port',
+    paymentTerms: '20% upfront, balance on milestones',
+    deliveryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   })
+  const [pendingPO, setPendingPO] = useState<POData | null>(null)
+  const [isPaymentProcessing, setIsPaymentProcessing] = useState(false)
+  const [poResponseStatus, setPOResponseStatus] = useState<'accept' | 'reject' | null>(null)
+  const [currentPOData, setCurrentPOData] = useState<POData | null>(null)
+  const [pendingInvoice, setPendingInvoice] = useState<InvoiceData | null>(null)
+  const [pendingReceipt, setPendingReceipt] = useState<WarehouseReceiptData | null>(null)
 
-  // Check for mutual trust establishment
-  useEffect(() => {
-    if (verificationStatus.buyerVerified && verificationStatus.sellerVerified) {
-      setVerificationStatus(prev => ({ ...prev, mutualTrustEstablished: true }))
-    }
-  }, [verificationStatus.buyerVerified, verificationStatus.sellerVerified])
-
-  // Buyer Agent Functions
-  const addBuyerMessage = (text: string, sender: 'user' | 'agent') => {
-    setBuyerMessages(prev => [...prev, { text, sender, timestamp: new Date() }])
-  }
-
-  const fetchBuyerAgentChat = () => {
-    addBuyerMessage('Fetching buyer agent data...', 'agent')
-    
-    setTimeout(() => {
-      const agentData: AgentData = {
-        id: 'BUYER-AGENT-001',
-        name: 'AlgoTITAN Buyer Agent',
-        role: 'Procurement Specialist',
-        credentials: ['vLEI-Verified', 'GoogleA2A-Certified', 'ISO-27001'],
-        vleiVerified: true,
-        delegations: ['Can negotiate prices', 'Can approve purchases up to $100K', 'Can verify seller credentials']
-      }
-      setBuyerAgentData(agentData)
-      addBuyerMessage('✅ Buyer Agent loaded successfully!', 'agent')
-      addBuyerMessage(`Agent ID: ${agentData.id}`, 'agent')
-      addBuyerMessage(`Role: ${agentData.role}`, 'agent')
-      addBuyerMessage(`vLEI Status: ${agentData.vleiVerified ? '✓ Verified' : '✗ Not Verified'}`, 'agent')
-      addBuyerMessage("Type 'fetch seller agent' to retrieve the seller's agent.", 'agent')
-    }, 1000)
-  }
-
-  const fetchSellerAgentFromBuyer = () => {
-    if (!buyerAgentData) {
-      addBuyerMessage("⚠️ Please fetch your buyer agent first!", 'agent')
-      return
-    }
-
-    addBuyerMessage('Fetching seller agent data...', 'agent')
-    
-    setTimeout(() => {
-      const sellerAgent: AgentData = {
-        id: 'SELLER-AGENT-002',
-        name: 'AlgoTITAN Seller Agent',
-        role: 'Sales Representative',
-        credentials: ['vLEI-Verified', 'GoogleA2A-Certified', 'PCI-DSS'],
-        vleiVerified: true,
-        delegations: ['Can offer discounts up to 15%', 'Can process orders', 'Can verify buyer credentials']
-      }
-      setSellerAgentFromBuyerData(sellerAgent)
-      addBuyerMessage('✅ Seller Agent information retrieved!', 'agent')
-      addBuyerMessage(`Agent ID: ${sellerAgent.id}`, 'agent')
-      addBuyerMessage(`Role: ${sellerAgent.role}`, 'agent')
-      addBuyerMessage(`vLEI Status: ${sellerAgent.vleiVerified ? '✓ Verified' : '✗ Not Verified'}`, 'agent')
-      addBuyerMessage("Type 'verify seller' to verify the seller agent's credentials.", 'agent')
-    }, 1000)
-  }
-
-  const verifySellerAgentFromBuyer = () => {
-    if (!sellerAgentFromBuyerData) {
-      addBuyerMessage("⚠️ Please fetch the seller agent first!", 'agent')
-      return
-    }
-
-    addBuyerMessage('Verifying seller agent credentials...', 'agent')
-    
-    setTimeout(() => {
-      const isValid = sellerAgentFromBuyerData.vleiVerified && 
-                     sellerAgentFromBuyerData.credentials.includes('vLEI-Verified')
+  // ============================================
+  // WALLET BALANCE FUNCTIONS
+  // ============================================
+  const fetchWalletBalance = async (walletAddress: string): Promise<string> => {
+    try {
+      console.log(`🔍 Fetching balance for: ${walletAddress}`)
       
-      if (isValid) {
-        addBuyerMessage('✅ Seller Agent verification successful!', 'agent')
-        addBuyerMessage('🔐 All credentials validated via vLEI infrastructure', 'agent')
-        addBuyerMessage('📋 Delegations confirmed:', 'agent')
-        sellerAgentFromBuyerData.delegations.forEach(del => {
-          addBuyerMessage(`  • ${del}`, 'agent')
-        })
-        setVerificationStatus(prev => ({ ...prev, sellerVerified: true }))
-      } else {
-        addBuyerMessage('❌ Seller Agent verification failed!', 'agent')
-        addBuyerMessage('⚠️ Credentials could not be validated', 'agent')
-      }
-    }, 1500)
+      // Import algosdk
+      const algosdk = await import('algosdk')
+      
+      console.log('✅ algosdk imported successfully')
+      
+      // Algorand TestNet API client
+      const algodToken = ''
+      const algodServer = ALGORAND_API_URL
+      const algodPort = 443
+      const algodClient = new algosdk.Algodv2(algodToken, algodServer, algodPort)
+      
+      console.log(`🌐 API Client created: ${algodServer}`)
+      
+      // Get account info
+      console.log('📊 Calling accountInformation...')
+      const accountInfo = await algodClient.accountInformation(walletAddress).do()
+      
+      console.log('✅ Account info received:', accountInfo)
+      
+      // Convert microAlgos to ALGO (1 ALGO = 1,000,000 microAlgos)
+      // accountInfo.amount is a BigInt in algosdk v3, convert to Number first
+      const balanceInAlgo = Number(accountInfo.amount) / 1_000_000
+      
+      console.log(`✅ Balance for ${walletAddress}: ${balanceInAlgo} ALGO`)
+      
+      return balanceInAlgo.toFixed(4)
+    } catch (error) {
+      console.error('❌ Error fetching wallet balance:', error)
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      throw error
+    }
   }
 
-  const handleBuyerSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!buyerInput.trim()) return
+  const refreshBuyerBalance = async () => {
+    setLoadingBuyerBalance(true)
+    try {
+      const balance = await fetchWalletBalance(BUYER_WALLET)
+      setBuyerBalance(balance)
+    } catch (error) {
+      setBuyerBalance('Error')
+    } finally {
+      setLoadingBuyerBalance(false)
+    }
+  }
 
-    const message = buyerInput.toLowerCase().trim()
-    addBuyerMessage(buyerInput, 'user')
-    setBuyerInput('')
+  const refreshSellerBalance = async () => {
+    setLoadingSellerBalance(true)
+    try {
+      const balance = await fetchWalletBalance(SELLER_WALLET)
+      setSellerBalance(balance)
+    } catch (error) {
+      setSellerBalance('Error')
+    } finally {
+      setLoadingSellerBalance(false)
+    }
+  }
+
+  const refreshPlatformBalance = async () => {
+    setLoadingPlatformBalance(true)
+    try {
+      const balance = await fetchWalletBalance(MARKETPLACE_WALLET)
+      setPlatformBalance(balance)
+    } catch (error) {
+      setPlatformBalance('Error')
+    } finally {
+      setLoadingPlatformBalance(false)
+    }
+  }
+
+  // Fetch balance when wallet is expanded
+  useEffect(() => {
+    if (showBuyerWallet && !buyerBalance) {
+      refreshBuyerBalance()
+    }
+  }, [showBuyerWallet])
+
+  useEffect(() => {
+    if (showSellerWallet && !sellerBalance) {
+      refreshSellerBalance()
+    }
+  }, [showSellerWallet])
+
+  useEffect(() => {
+    if (showPlatformWallet && !platformBalance) {
+      refreshPlatformBalance()
+    }
+  }, [showPlatformWallet])
+
+  // ============================================
+  // SCROLL EFFECTS
+  // ============================================
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [chatMessages])
+
+  useEffect(() => {
+    chatEndRefSeller.current?.scrollIntoView({ behavior: "smooth" })
+  }, [sellerChatMessages])
+
+  // ============================================
+  // AUTO-VERIFY EFFECTS
+  // ============================================
+  useEffect(() => {
+    if (agenticStep === 'seller-agent-fetched' && sellerAgentFromBuyerData && !sellerAgentVerified) {
+      setTimeout(() => verifySellerAgent(), 1000)
+    }
+  }, [agenticStep, sellerAgentFromBuyerData])
+
+  useEffect(() => {
+    if (sellerAgenticStep === 'buyer-agent-fetched' && buyerAgentFromSellerData && !buyerAgentVerified) {
+      setTimeout(() => verifyBuyerAgentFromSeller(), 1000)
+    }
+  }, [sellerAgenticStep, buyerAgentFromSellerData])
+
+  useEffect(() => {
+    if (sellerAgentVerified && agenticStep === 'seller-agent-verified') {
+      setAgenticStep('business-ready')
+      addMessage("✅ Ready for business! Type 'send po' to create a Purchase Order.", 'agent')
+    }
+  }, [sellerAgentVerified])
+
+  useEffect(() => {
+    if (buyerAgentVerified && sellerAgenticStep === 'buyer-agent-verified') {
+      setSellerAgenticStep('business-ready')
+      addSellerMessage("✅ Ready for business! Waiting for buyer's messages.", 'agent')
+    }
+  }, [buyerAgentVerified])
+
+  // ============================================
+  // CORE VERIFICATION FUNCTION
+  // ============================================
+  const fetchAndVerifyAgent = async (
+    agentType: 'buyer' | 'seller',
+    agentUrl: string
+  ): Promise<{ success: boolean; agentCard?: AgentCard; error?: string }> => {
+    try {
+      console.log(`🔄 Fetching ${agentType} agent card from: ${agentUrl}`)
+      
+      const response = await fetch(agentUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agent card: ${response.status}`)
+      }
+
+      const agentCardData = await response.json()
+      
+      const agentCard: AgentCard = {
+        alias: agentCardData.name || "Unknown Agent",
+        engagementContextRole: agentCardData.extensions?.gleifIdentity?.engagementRole || "Unknown Role",
+        agentType: "AI",
+        verified: false,
+        timestamp: new Date().toLocaleTimeString(),
+        name: agentCardData.name,
+        agentAID: agentCardData.extensions?.keriIdentifiers?.agentAID,
+        oorRole: agentCardData.extensions?.gleifIdentity?.officialRole
+      }
+
+      console.log(`✅ Agent card fetched:`, {
+        name: agentCard.name,
+        agentAID: agentCard.agentAID,
+        oorRole: agentCard.oorRole
+      })
+
+      if (USE_MOCK_VERIFICATION) {
+        console.log(`🔐 [MOCK] Verifying ${agentType}...`)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        agentCard.verified = true
+        return { success: true, agentCard }
+      }
+
+      const verifyEndpoint = agentType === 'buyer' 
+        ? `${API_BASE_URL}/api/verify/buyer`
+        : `${API_BASE_URL}/api/verify/seller`
+
+      console.log(`🔐 Calling verification: ${verifyEndpoint}`)
+      
+      const verifyResponse = await fetch(verifyEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: agentCard.name,
+          agentAID: agentCard.agentAID,
+          oorRole: agentCard.oorRole,
+        }),
+      })
+
+      const verifyResult = await verifyResponse.json()
+      
+      if (verifyResult.success && verifyResult.verified) {
+        console.log(`✅ ${agentType} verification passed`)
+        agentCard.verified = true
+        return { success: true, agentCard }
+      } else {
+        console.log(`❌ ${agentType} verification failed:`, verifyResult.error)
+        return { success: false, error: verifyResult.error || 'Verification failed' }
+      }
+
+    } catch (error: any) {
+      console.error(`❌ Error fetching/verifying ${agentType}:`, error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  // ============================================
+  // MESSAGE VERIFICATION ON RECEIPT
+  // ============================================
+  const verifyReceivedMessage = async (
+    senderType: 'buyer' | 'seller',
+    messageId: string
+  ): Promise<boolean> => {
+    console.log(`\n📨 Message received from ${senderType}. Starting verification...`)
+    
+    const agentUrl = senderType === 'buyer'
+      ? 'http://localhost:9090/.well-known/agent-card.json'
+      : 'http://localhost:8080/.well-known/agent-card.json'
+
+    const result = await fetchAndVerifyAgent(senderType, agentUrl)
+
+    if (result.success && result.agentCard?.verified) {
+      console.log(`✅ Message ${messageId} verified from ${senderType}`)
+      
+      setBusinessMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, verified: true, status: 'verified' }
+          : msg
+      ))
+      
+      return true
+    } else {
+      console.log(`❌ Message ${messageId} rejected - verification failed`)
+      
+      setBusinessMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, verified: false, status: 'rejected' }
+          : msg
+      ))
+      
+      return false
+    }
+  }
+
+  // ============================================
+  // REAL ATOMIC PAYMENT FUNCTION WITH MARKETPLACE FEE
+  // ============================================
+  const executeAtomicPayment = async (
+    amount: number,
+    paymentType: 'po_acceptance' | 'invoice' | 'warehouse_receipt'
+  ): Promise<PaymentData> => {
+    const platformFee = amount * PLATFORM_FEE_PERCENTAGE
+    const totalPaid = amount + platformFee
+
+    console.log(`💰 Executing Algorand atomic payment:`)
+    console.log(`   Amount to seller: ${amount} ALGO`)
+    console.log(`   Marketplace fee (${MARKETPLACE_FEE}%): ${platformFee.toFixed(4)} ALGO`)
+    console.log(`   Total: ${totalPaid.toFixed(4)} ALGO`)
+
+    try {
+      // Check if buyer secret key is available
+      if (!BUYER_SECRET_KEY) {
+        throw new Error('Buyer secret key not configured. Please set NEXT_PUBLIC_BUYER_SECRET_KEY in environment.')
+      }
+
+      // Import algosdk
+      const algosdk = await import('algosdk')
+      
+      // Algorand Network configuration
+      const algodToken = ''
+      const algodServer = ALGORAND_API_URL
+      const algodPort = 443
+      const algodClient = new algosdk.Algodv2(algodToken, algodServer, algodPort)
+      
+      console.log(`🌐 Network: ${ALGORAND_NETWORK} (${CHAIN_ID})`)
+      console.log(`🔗 API Endpoint: ${algodServer}`)
+      console.log(`💵 Payment Currency: ${PAYMENT_CURRENCY}`)
+
+      // Get suggested parameters from the network
+      const suggestedParams = await algodClient.getTransactionParams().do()
+
+      // Convert ALGO to microAlgos (1 ALGO = 1,000,000 microAlgos)
+      const amountMicroAlgos = Math.round(amount * 1_000_000)
+      const feeMicroAlgos = Math.round(platformFee * 1_000_000)
+
+      console.log(`📝 Creating atomic transaction group:`)
+      console.log(`   Transaction 1: ${amountMicroAlgos} microAlgos (${amount} ALGO) → Seller`)
+      console.log(`   Transaction 2: ${feeMicroAlgos} microAlgos (${platformFee.toFixed(4)} ALGO) → Marketplace`)
+
+      // Create transaction 1: Buyer → Seller (main payment)
+      const txn1 = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        sender: BUYER_WALLET,
+        receiver: SELLER_WALLET,
+        amount: amountMicroAlgos,
+        suggestedParams,
+        note: new Uint8Array(new TextEncoder().encode(`Payment: ${paymentType}`)),
+      })
+
+      // Create transaction 2: Buyer → Marketplace (fee)
+      const txn2 = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        sender: BUYER_WALLET,
+        receiver: MARKETPLACE_WALLET,
+        amount: feeMicroAlgos,
+        suggestedParams,
+        note: new Uint8Array(new TextEncoder().encode(`Marketplace fee: ${paymentType}`)),
+      })
+
+      // Group the transactions atomically
+      const txnGroup = [txn1, txn2]
+      algosdk.assignGroupID(txnGroup)
+      
+      console.log(`✅ Atomic group created`)
+      console.log(`🔐 Signing transactions with buyer's key...`)
+
+      // Decode the buyer's secret key
+      const buyerAccount = algosdk.mnemonicToSecretKey(BUYER_SECRET_KEY)
+      
+      // Sign both transactions
+      const signedTxn1 = txn1.signTxn(buyerAccount.sk)
+      const signedTxn2 = txn2.signTxn(buyerAccount.sk)
+
+      console.log(`✅ Transactions signed`)
+      console.log(`📤 Submitting atomic group to Algorand TestNet...`)
+
+      // Submit the grouped transactions
+      const response = await algodClient.sendRawTransaction([signedTxn1, signedTxn2]).do()
+      
+      // In algosdk v3, the field is 'txid' (lowercase)
+      const txId = response.txid
+
+      console.log(`✅ Transaction submitted!`)
+      console.log(`   TX ID: ${txId}`)
+      console.log(`⏳ Waiting for confirmation...`)
+
+      // Wait for confirmation
+      const confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 4)
+
+      console.log(`✅ Transaction confirmed in round ${confirmedTxn['confirmed-round']}`)
+      console.log(`🔗 View on Pera Explorer: https://testnet.explorer.perawallet.app/tx/${txId}`)
+
+      return {
+        amount,
+        platformFee,
+        totalPaid,
+        currency: 'ALGO',
+        transactionHash: txId,
+        peraExplorerLink: `https://testnet.explorer.perawallet.app/tx/${txId}`,
+        status: 'completed',
+        paymentType,
+      }
+
+    } catch (error: any) {
+      console.error('💥 Payment error:', error)
+      throw new Error(`Payment failed: ${error.message}`)
+    }
+  }
+
+  // ============================================
+  // BUYER: FETCH AGENTS
+  // ============================================
+  const addMessage = (text: string, type: 'user' | 'agent') => {
+    setChatMessages(prev => [...prev, {
+      id: generateUniqueId(),
+      text,
+      type,
+      timestamp: new Date(),
+    }])
+  }
+
+  const fetchBuyerAgent = async () => {
+    setAgenticStep('fetching-buyer-agent')
+    addMessage("🔄 Fetching buyer agent...", 'agent')
+
+    const result = await fetchAndVerifyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    
+    if (result.success && result.agentCard) {
+      setBuyerAgentData(result.agentCard)
+      setAgenticStep('buyer-agent-fetched')
+      addMessage("✅ Buyer agent fetched successfully!", 'agent')
+    } else {
+      addMessage(`❌ Failed to fetch buyer agent: ${result.error}`, 'agent')
+      setAgenticStep('idle')
+    }
+  }
+
+  const fetchSellerAgent = async () => {
+    setAgenticStep('fetching-seller-agent')
+    addMessage("🔄 Fetching seller agent...", 'agent')
+
+    const result = await fetchAndVerifyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    
+    if (result.success && result.agentCard) {
+      setSellerAgentFromBuyerData(result.agentCard)
+      setAgenticStep('seller-agent-fetched')
+      addMessage("✅ Seller agent fetched!", 'agent')
+    } else {
+      addMessage(`❌ Failed to fetch seller agent: ${result.error}`, 'agent')
+      setAgenticStep('buyer-agent-fetched')
+    }
+  }
+
+  const verifySellerAgent = async () => {
+    setAgenticStep('verifying-seller-agent')
+    addMessage("🔐 Verifying seller agent...", 'agent')
+
+    const result = await fetchAndVerifyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    
+    if (result.success && result.agentCard?.verified) {
+      setSellerAgentVerified(true)
+      setAgenticStep('seller-agent-verified')
+      addMessage("✅ Seller agent verified!", 'agent')
+    } else {
+      addMessage(`❌ Verification failed: ${result.error}`, 'agent')
+    }
+  }
+
+  // ============================================
+  // SELLER: FETCH AGENTS
+  // ============================================
+  const addSellerMessage = (text: string, type: 'user' | 'agent') => {
+    setSellerChatMessages(prev => [...prev, {
+      id: generateUniqueId(),
+      text,
+      type,
+      timestamp: new Date(),
+    }])
+  }
+
+  const fetchSellerAgentChat = async () => {
+    setSellerAgenticStep('fetching-seller-agent')
+    addSellerMessage("🔄 Fetching my agent...", 'agent')
+
+    const result = await fetchAndVerifyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    
+    if (result.success && result.agentCard) {
+      setSellerAgentData(result.agentCard)
+      setSellerAgenticStep('seller-agent-fetched')
+      addSellerMessage("✅ My agent fetched!", 'agent')
+    } else {
+      addSellerMessage(`❌ Failed: ${result.error}`, 'agent')
+      setSellerAgenticStep('idle')
+    }
+  }
+
+  const fetchBuyerAgentChat = async () => {
+    setSellerAgenticStep('fetching-buyer-agent')
+    addSellerMessage("🔄 Fetching buyer agent...", 'agent')
+
+    const result = await fetchAndVerifyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    
+    if (result.success && result.agentCard) {
+      setBuyerAgentFromSellerData(result.agentCard)
+      setSellerAgenticStep('buyer-agent-fetched')
+      addSellerMessage("✅ Buyer agent fetched!", 'agent')
+    } else {
+      addSellerMessage(`❌ Failed: ${result.error}`, 'agent')
+      setSellerAgenticStep('seller-agent-fetched')
+    }
+  }
+
+  const verifyBuyerAgentFromSeller = async () => {
+    setSellerAgenticStep('verifying-buyer-agent')
+    addSellerMessage("🔐 Verifying buyer agent...", 'agent')
+
+    const result = await fetchAndVerifyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    
+    if (result.success && result.agentCard?.verified) {
+      setBuyerAgentVerified(true)
+      setSellerAgenticStep('buyer-agent-verified')
+      addSellerMessage("✅ Buyer agent verified!", 'agent')
+    } else {
+      addSellerMessage(`❌ Verification failed: ${result.error}`, 'agent')
+    }
+  }
+
+  // ============================================
+  // CHAT HANDLERS
+  // ============================================
+  const handleSendMessage = () => {
+    if (!inputMessage.trim()) return
+
+    const message = inputMessage.trim().toLowerCase()
+    addMessage(inputMessage, 'user')
+    setInputMessage("")
 
     if (message.includes('fetch my agent') || message.includes('fetch buyer agent')) {
-      fetchBuyerAgentChat()
+      fetchBuyerAgent()
     } else if (message.includes('fetch seller agent')) {
       if (buyerAgentData) {
-        fetchSellerAgentFromBuyer()
+        fetchSellerAgent()
       } else {
-        addBuyerMessage("⚠️ Please fetch your buyer agent first!", 'agent')
+        addMessage("⚠️ Please fetch your buyer agent first!", 'agent')
       }
-    } else if (message.includes('verify seller')) {
-      if (sellerAgentFromBuyerData) {
-        verifySellerAgentFromBuyer()
+    } else if (message.includes('send po') || message.includes('send purchase order') || message.includes('create po')) {
+      if (agenticStep === 'business-ready') {
+        addMessage("📝 Creating and sending Purchase Order...", 'agent')
+        sendPO()
       } else {
-        addBuyerMessage("⚠️ Please fetch the seller agent first!", 'agent')
+        addMessage("⚠️ Please complete agent verification first!", 'agent')
       }
     } else {
-      addBuyerMessage("I can help you with: 'fetch my agent', 'fetch seller agent', 'verify seller'", 'agent')
+      addMessage("I can help you with: 'fetch my agent', 'fetch seller agent', 'send po'", 'agent')
     }
   }
 
-  // Seller Agent Functions
-  const addSellerMessage = (text: string, sender: 'user' | 'agent') => {
-    setSellerMessages(prev => [...prev, { text, sender, timestamp: new Date() }])
-  }
+  const handleSellerSendMessage = () => {
+    if (!sellerInputMessage.trim()) return
 
-  const fetchSellerAgentChat = () => {
-    addSellerMessage('Fetching seller agent data...', 'agent')
-    
-    setTimeout(() => {
-      const agentData: AgentData = {
-        id: 'SELLER-AGENT-002',
-        name: 'AlgoTITAN Seller Agent',
-        role: 'Sales Representative',
-        credentials: ['vLEI-Verified', 'GoogleA2A-Certified', 'PCI-DSS'],
-        vleiVerified: true,
-        delegations: ['Can offer discounts up to 15%', 'Can process orders', 'Can verify buyer credentials']
-      }
-      setSellerAgentData(agentData)
-      addSellerMessage('✅ Seller Agent loaded successfully!', 'agent')
-      addSellerMessage(`Agent ID: ${agentData.id}`, 'agent')
-      addSellerMessage(`Role: ${agentData.role}`, 'agent')
-      addSellerMessage(`vLEI Status: ${agentData.vleiVerified ? '✓ Verified' : '✗ Not Verified'}`, 'agent')
-      addSellerMessage("Type 'fetch buyer agent' to retrieve the buyer's agent.", 'agent')
-    }, 1000)
-  }
-
-  const fetchBuyerAgentFromSeller = () => {
-    if (!sellerAgentData) {
-      addSellerMessage("⚠️ Please fetch your seller agent first!", 'agent')
-      return
-    }
-
-    addSellerMessage('Fetching buyer agent data...', 'agent')
-    
-    setTimeout(() => {
-      const buyerAgent: AgentData = {
-        id: 'BUYER-AGENT-001',
-        name: 'AlgoTITAN Buyer Agent',
-        role: 'Procurement Specialist',
-        credentials: ['vLEI-Verified', 'GoogleA2A-Certified', 'ISO-27001'],
-        vleiVerified: true,
-        delegations: ['Can negotiate prices', 'Can approve purchases up to $100K', 'Can verify seller credentials']
-      }
-      setBuyerAgentFromSellerData(buyerAgent)
-      addSellerMessage('✅ Buyer Agent information retrieved!', 'agent')
-      addSellerMessage(`Agent ID: ${buyerAgent.id}`, 'agent')
-      addSellerMessage(`Role: ${buyerAgent.role}`, 'agent')
-      addSellerMessage(`vLEI Status: ${buyerAgent.vleiVerified ? '✓ Verified' : '✗ Not Verified'}`, 'agent')
-      addSellerMessage("Type 'verify buyer' to verify the buyer agent's credentials.", 'agent')
-    }, 1000)
-  }
-
-  const verifyBuyerAgentFromSeller = () => {
-    if (!buyerAgentFromSellerData) {
-      addSellerMessage("⚠️ Please fetch the buyer agent first!", 'agent')
-      return
-    }
-
-    addSellerMessage('Verifying buyer agent credentials...', 'agent')
-    
-    setTimeout(() => {
-      const isValid = buyerAgentFromSellerData.vleiVerified && 
-                     buyerAgentFromSellerData.credentials.includes('vLEI-Verified')
-      
-      if (isValid) {
-        addSellerMessage('✅ Buyer Agent verification successful!', 'agent')
-        addSellerMessage('🔐 All credentials validated via vLEI infrastructure', 'agent')
-        addSellerMessage('📋 Delegations confirmed:', 'agent')
-        buyerAgentFromSellerData.delegations.forEach(del => {
-          addSellerMessage(`  • ${del}`, 'agent')
-        })
-        setVerificationStatus(prev => ({ ...prev, buyerVerified: true }))
-      } else {
-        addSellerMessage('❌ Buyer Agent verification failed!', 'agent')
-        addSellerMessage('⚠️ Credentials could not be validated', 'agent')
-      }
-    }, 1500)
-  }
-
-  const handleSellerSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!sellerInput.trim()) return
-
-    const message = sellerInput.toLowerCase().trim()
-    addSellerMessage(sellerInput, 'user')
-    setSellerInput('')
+    const message = sellerInputMessage.trim().toLowerCase()
+    addSellerMessage(sellerInputMessage, 'user')
+    setSellerInputMessage("")
 
     if (message.includes('fetch my agent') || message.includes('fetch seller agent')) {
       fetchSellerAgentChat()
     } else if (message.includes('fetch buyer agent')) {
       if (sellerAgentData) {
-        fetchBuyerAgentFromSeller()
+        fetchBuyerAgentChat()
       } else {
         addSellerMessage("⚠️ Please fetch your seller agent first!", 'agent')
       }
-    } else if (message.includes('verify buyer')) {
-      if (buyerAgentFromSellerData) {
-        verifyBuyerAgentFromSeller()
-      } else {
-        addSellerMessage("⚠️ Please fetch the buyer agent first!", 'agent')
-      }
     } else {
-      addSellerMessage("I can help you with: 'fetch my agent', 'fetch buyer agent', 'verify buyer'", 'agent')
+      addSellerMessage("I can help you with: 'fetch my agent', 'fetch buyer agent'", 'agent')
     }
   }
 
+  // ============================================
+  // PO HANDLING
+  // ============================================
+  const calculatePOTotal = () => {
+    const total = poData.items.reduce((sum, item) => sum + item.total, 0)
+    setPOData(prev => ({ ...prev, totalAmount: total }))
+    return total
+  }
+
+  const updatePOItem = (index: number, field: string, value: any) => {
+    const newItems = [...poData.items]
+    newItems[index] = { ...newItems[index], [field]: value }
+    
+    if (field === 'quantity' || field === 'unitPrice') {
+      newItems[index].total = newItems[index].quantity * newItems[index].unitPrice
+    }
+    
+    setPOData(prev => ({ ...prev, items: newItems }))
+  }
+
+  const addPOItem = () => {
+    setPOData(prev => ({
+      ...prev,
+      items: [...prev.items, { name: '', quantity: 0, unitPrice: 0, total: 0 }]
+    }))
+  }
+
+  const sendPO = async () => {
+    if (!buyerAgentData || !sellerAgentFromBuyerData) return
+
+    const finalTotal = calculatePOTotal()
+    const updatedPO = { ...poData, totalAmount: finalTotal }
+
+    addMessage("📤 Sending Purchase Order to seller...", 'agent')
+    
+    const businessMsg: BusinessMessage = {
+      id: generateUniqueId(),
+      from: 'buyer',
+      to: 'seller',
+      type: 'po',
+      content: `Purchase Order ${updatedPO.poNumber} - Total: ${updatedPO.totalAmount.toLocaleString()} units (${(updatedPO.totalAmount / 100000).toFixed(2)} ALGO)`,
+      attachment: updatedPO,
+      timestamp: new Date(),
+      verified: false,
+      status: 'pending',
+    }
+
+    setBusinessMessages(prev => [...prev, businessMsg])
+    addMessage("✅ PO sent! Waiting for seller verification...", 'agent')
+    setShowPOForm(false)
+    setCurrentPOData(updatedPO)
+    
+    addSellerMessage("📦 New Purchase Order received from buyer!", 'agent')
+    addSellerMessage("🔐 Verifying buyer's credentials...", 'agent')
+    
+    setTimeout(async () => {
+      const verified = await verifyReceivedMessage('buyer', businessMsg.id)
+      
+      if (verified) {
+        addSellerMessage("✅ Buyer verified! PO is legitimate.", 'agent')
+        addSellerMessage("✅ Auto-accepting PO...", 'agent')
+        
+        // Auto-accept the PO
+        setPendingPO(updatedPO)
+        setPOResponseStatus('accept')
+        
+        // Send acceptance response immediately
+        setTimeout(() => {
+          sendPOAcceptanceAndTriggerPayment(updatedPO)
+        }, 1000)
+      } else {
+        addSellerMessage("❌ Verification failed! PO rejected.", 'agent')
+      }
+    }, 2000)
+  }
+
+  const sendPOAcceptanceAndTriggerPayment = async (po: POData) => {
+    addSellerMessage(`📤 Sending ACCEPT response to buyer...`, 'agent')
+
+    const responseMsg: BusinessMessage = {
+      id: generateUniqueId(),
+      from: 'seller',
+      to: 'buyer',
+      type: 'po_response',
+      content: `PO ${po.poNumber} ACCEPTED`,
+      timestamp: new Date(),
+      verified: false,
+      status: 'pending',
+    }
+
+    setBusinessMessages(prev => [...prev, responseMsg])
+    addSellerMessage(`✅ ACCEPT response sent!`, 'agent')
+
+    addMessage(`📨 PO Response received: ACCEPT`, 'agent')
+    addMessage("🔐 Verifying seller's credentials...", 'agent')
+
+    setTimeout(async () => {
+      const verified = await verifyReceivedMessage('seller', responseMsg.id)
+      
+      if (verified) {
+        addMessage("✅ Seller verified! PO accepted.", 'agent')
+        addMessage("💰 Initiating 20% upfront payment...", 'agent')
+        
+        // Automatically trigger payment
+        setTimeout(() => initiatePOPayment(po), 1500)
+      } else {
+        addMessage("❌ Seller verification failed! Response rejected.", 'agent')
+      }
+    }, 2000)
+  }
+
+  const handlePOResponse = async (response: 'accept' | 'reject') => {
+    if (!pendingPO) return
+
+    setPOResponseStatus(response)
+    addSellerMessage(`📤 Sending ${response.toUpperCase()} response to buyer...`, 'agent')
+
+    const responseMsg: BusinessMessage = {
+      id: generateUniqueId(),
+      from: 'seller',
+      to: 'buyer',
+      type: 'po_response',
+      content: response === 'accept' 
+        ? `PO ${pendingPO.poNumber} ACCEPTED`
+        : `PO ${pendingPO.poNumber} REJECTED`,
+      timestamp: new Date(),
+      verified: false,
+      status: 'pending',
+    }
+
+    setBusinessMessages(prev => [...prev, responseMsg])
+    addSellerMessage(`✅ ${response.toUpperCase()} response sent!`, 'agent')
+
+    addMessage(`📨 PO Response received: ${response.toUpperCase()}`, 'agent')
+    addMessage("🔐 Verifying seller's credentials...", 'agent')
+
+    setTimeout(async () => {
+      const verified = await verifyReceivedMessage('seller', responseMsg.id)
+      
+      if (verified && response === 'accept') {
+        addMessage("✅ Seller verified! PO accepted.", 'agent')
+        addMessage("💰 Initiating 20% upfront payment...", 'agent')
+        
+        setTimeout(() => initiatePOPayment(pendingPO!), 1500)
+      } else if (verified && response === 'reject') {
+        addMessage("❌ PO was rejected by seller.", 'agent')
+      } else {
+        addMessage("❌ Seller verification failed! Response rejected.", 'agent')
+      }
+    }, 2000)
+  }
+
+  // ============================================
+  // PAYMENT FUNCTIONS
+  // ============================================
+  const initiatePOPayment = async (po: POData) => {
+    setIsPaymentProcessing(true)
+    // Convert PO units to ALGO (divide by 100,000) then calculate 20%
+    const paymentAmount = (po.totalAmount / 100000) * 0.20
+
+    addMessage(`💸 Processing 20% upfront payment...`, 'agent')
+    addMessage(`   PO Value: ${po.totalAmount.toLocaleString()} units`, 'agent')
+    addMessage(`   Payment Amount: ${paymentAmount} ALGO`, 'agent')
+    addMessage(`   Marketplace fee (${MARKETPLACE_FEE}%): ${(paymentAmount * PLATFORM_FEE_PERCENTAGE).toFixed(4)} ALGO`, 'agent')
+
+    try {
+      const paymentData = await executeAtomicPayment(paymentAmount, 'po_acceptance')
+
+      const paymentMsg: BusinessMessage = {
+        id: generateUniqueId(),
+        from: 'buyer',
+        to: 'seller',
+        type: 'payment',
+        content: `PO Acceptance Payment: ${paymentAmount} ALGO`,
+        attachment: paymentData,
+        timestamp: new Date(),
+        verified: true,
+        status: 'verified',
+      }
+
+      setBusinessMessages(prev => [...prev, paymentMsg])
+      addMessage("✅ Payment completed successfully!", 'agent')
+      addMessage(`Transaction: ${paymentData.transactionHash}`, 'agent')
+      
+      addSellerMessage(`💰 Payment received: ${paymentAmount} ALGO`, 'agent')
+      addSellerMessage(`✅ PO payment confirmed!`, 'agent')
+      
+      setIsPaymentProcessing(false)
+
+      // Refresh wallet balances
+      refreshBuyerBalance()
+      refreshSellerBalance()
+      refreshPlatformBalance()
+
+      addSellerMessage("⏳ Processing order... Invoice will be sent in 5 seconds.", 'agent')
+      setTimeout(() => sendInvoice(po), 5000)
+    } catch (error: any) {
+      addMessage(`❌ Payment failed: ${error.message}`, 'agent')
+      setIsPaymentProcessing(false)
+    }
+  }
+
+  const sendInvoice = async (po: POData) => {
+    addSellerMessage("📄 Generating invoice...", 'agent')
+
+    // Convert PO units to ALGO and calculate 50% remaining (after 20% PO payment)
+    const algoAmount = po.totalAmount / 100000
+    const invoiceAlgoAmount = algoAmount * 0.50
+
+    const invoice: InvoiceData = {
+      invoiceNumber: `INV-${Date.now()}`,
+      poNumber: po.poNumber,
+      items: po.items,
+      subtotal: invoiceAlgoAmount,
+      tax: invoiceAlgoAmount * TAX_RATE_DECIMAL,
+      totalAmount: invoiceAlgoAmount * (1 + TAX_RATE_DECIMAL),
+      dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      notes: 'Order processed and ready for shipment'
+    }
+
+    const invoiceMsg: BusinessMessage = {
+      id: generateUniqueId(),
+      from: 'seller',
+      to: 'buyer',
+      type: 'invoice',
+      content: `Invoice ${invoice.invoiceNumber} - Amount Due: ${invoice.totalAmount.toFixed(2)} ALGO`,
+      attachment: invoice,
+      timestamp: new Date(),
+      verified: false,
+      status: 'pending',
+    }
+
+    setBusinessMessages(prev => [...prev, invoiceMsg])
+    addSellerMessage("✅ Invoice sent to buyer!", 'agent')
+
+    addMessage("📨 Invoice received from seller!", 'agent')
+    addMessage("🔐 Verifying seller's credentials...", 'agent')
+
+    setTimeout(async () => {
+      const verified = await verifyReceivedMessage('seller', invoiceMsg.id)
+      
+      if (verified) {
+        addMessage("✅ Seller verified! Invoice is legitimate.", 'agent')
+        setPendingInvoice(invoice)
+        addMessage("💰 Processing invoice payment...", 'agent')
+        
+        setTimeout(() => processInvoicePayment(invoice), 2000)
+      } else {
+        addMessage("❌ Seller verification failed! Invoice rejected.", 'agent')
+      }
+    }, 2000)
+  }
+
+  const processInvoicePayment = async (invoice: InvoiceData) => {
+    setIsPaymentProcessing(true)
+    
+    addMessage(`💸 Processing invoice payment...`, 'agent')
+    addMessage(`   Amount: ${invoice.totalAmount.toFixed(2)} ALGO`, 'agent')
+    addMessage(`   Marketplace fee (${MARKETPLACE_FEE}%): ${(invoice.totalAmount * PLATFORM_FEE_PERCENTAGE).toFixed(4)} ALGO`, 'agent')
+
+    try {
+      const paymentData = await executeAtomicPayment(invoice.totalAmount, 'invoice')
+
+      const paymentMsg: BusinessMessage = {
+        id: generateUniqueId(),
+        from: 'buyer',
+        to: 'seller',
+        type: 'invoice_payment',
+        content: `Invoice ${invoice.invoiceNumber} paid: ${invoice.totalAmount.toFixed(2)} ALGO`,
+        attachment: paymentData,
+        timestamp: new Date(),
+        verified: true,
+        status: 'verified',
+      }
+
+      setBusinessMessages(prev => [...prev, paymentMsg])
+      addMessage("✅ Invoice payment completed!", 'agent')
+      addMessage(`Transaction: ${paymentData.transactionHash}`, 'agent')
+      addMessage(`🔗 Pera Explorer: ${paymentData.peraExplorerLink}`, 'agent')
+      
+      addSellerMessage(`💰 Invoice payment received: ${invoice.totalAmount.toFixed(2)} ALGO`, 'agent')
+      addSellerMessage(`✅ Payment confirmed! Preparing shipment...`, 'agent')
+      
+      setIsPaymentProcessing(false)
+      setPendingInvoice(null)
+
+      // Refresh wallet balances
+      refreshBuyerBalance()
+      refreshSellerBalance()
+      refreshPlatformBalance()
+
+      addSellerMessage("⏳ Warehouse processing... Receipt will be sent in 5 seconds.", 'agent')
+      setTimeout(() => sendWarehouseReceipt(invoice), 5000)
+    } catch (error: any) {
+      addMessage(`❌ Invoice payment failed: ${error.message}`, 'agent')
+      setIsPaymentProcessing(false)
+    }
+  }
+
+  const sendWarehouseReceipt = async (invoice: InvoiceData) => {
+    addSellerMessage("📦 Generating warehouse receipt...", 'agent')
+
+    const receipt: WarehouseReceiptData = {
+      receiptNumber: `WR-${Date.now()}`,
+      poNumber: invoice.poNumber,
+      invoiceNumber: invoice.invoiceNumber,
+      items: invoice.items.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        warehouseLocation: 'Warehouse A - Bay 12'
+      })),
+      receivedDate: new Date().toISOString().split('T')[0],
+      inspector: 'Raj Kumar - Quality Inspector',
+      notes: 'All items inspected and ready for dispatch'
+    }
+
+    const receiptMsg: BusinessMessage = {
+      id: generateUniqueId(),
+      from: 'seller',
+      to: 'buyer',
+      type: 'warehouse_receipt',
+      content: `Warehouse Receipt ${receipt.receiptNumber} - Order Ready for Dispatch`,
+      attachment: receipt,
+      timestamp: new Date(),
+      verified: false,
+      status: 'pending',
+    }
+
+    setBusinessMessages(prev => [...prev, receiptMsg])
+    addSellerMessage("✅ Warehouse receipt sent to buyer!", 'agent')
+
+    addMessage("📨 Warehouse receipt received from seller!", 'agent')
+    addMessage("🔐 Verifying seller's credentials...", 'agent')
+
+    setTimeout(async () => {
+      const verified = await verifyReceivedMessage('seller', receiptMsg.id)
+      
+      if (verified) {
+        addMessage("✅ Seller verified! Warehouse receipt is legitimate.", 'agent')
+        setPendingReceipt(receipt)
+        addMessage("💰 Processing receipt confirmation payment...", 'agent')
+        
+        setTimeout(() => processReceiptPayment(receipt), 2000)
+      } else {
+        addMessage("❌ Seller verification failed! Receipt rejected.", 'agent')
+      }
+    }, 2000)
+  }
+
+  const processReceiptPayment = async (receipt: WarehouseReceiptData) => {
+    setIsPaymentProcessing(true)
+    
+    // Calculate 30% of original PO amount (converted to ALGO)
+    const receiptAmount = currentPOData ? (currentPOData.totalAmount / 100000) * 0.30 : 0.3
+    
+    addMessage(`💸 Processing receipt confirmation payment...`, 'agent')
+    addMessage(`   Amount: ${receiptAmount} ALGO`, 'agent')
+    addMessage(`   Marketplace fee (${MARKETPLACE_FEE}%): ${(receiptAmount * PLATFORM_FEE_PERCENTAGE).toFixed(4)} ALGO`, 'agent')
+
+    try {
+      const paymentData = await executeAtomicPayment(receiptAmount, 'warehouse_receipt')
+
+      const paymentMsg: BusinessMessage = {
+        id: generateUniqueId(),
+        from: 'buyer',
+        to: 'seller',
+        type: 'receipt_payment',
+        content: `Receipt ${receipt.receiptNumber} confirmed: ${receiptAmount} ALGO`,
+        attachment: paymentData,
+        timestamp: new Date(),
+        verified: true,
+        status: 'verified',
+      }
+
+      setBusinessMessages(prev => [...prev, paymentMsg])
+      addMessage("✅ Receipt payment completed!", 'agent')
+      addMessage(`Transaction: ${paymentData.transactionHash}`, 'agent')
+      addMessage(`🔗 Pera Explorer: ${paymentData.peraExplorerLink}`, 'agent')
+      addMessage("🎉 Transaction sequence complete!", 'agent')
+      
+      addSellerMessage(`💰 Receipt payment received: ${receiptAmount} ALGO`, 'agent')
+      addSellerMessage(`✅ All payments confirmed!`, 'agent')
+      addSellerMessage("🎉 Order complete! Ready for dispatch.", 'agent')
+      
+      setIsPaymentProcessing(false)
+      setPendingReceipt(null)
+
+      // Refresh wallet balances
+      refreshBuyerBalance()
+      refreshSellerBalance()
+      refreshPlatformBalance()
+    } catch (error: any) {
+      addMessage(`❌ Receipt payment failed: ${error.message}`, 'agent')
+      setIsPaymentProcessing(false)
+    }
+  }
+
+  // ============================================
+  // WALLET DISPLAY COMPONENT
+  // ============================================
+  const WalletDisplay = ({ 
+    label, 
+    address, 
+    balance, 
+    loading, 
+    isOpen, 
+    onToggle, 
+    onRefresh, 
+    color 
+  }: { 
+    label: string
+    address: string
+    balance: string | null
+    loading: boolean
+    isOpen: boolean
+    onToggle: () => void
+    onRefresh: () => void
+    color: string
+  }) => (
+    <div className={`border-2 rounded-lg overflow-hidden ${color}`}>
+      <button
+        onClick={onToggle}
+        className="w-full p-4 flex items-center justify-between hover:bg-opacity-50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <Wallet className="w-5 h-5" />
+          <span className="font-semibold text-sm">{label}</span>
+        </div>
+        {isOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+      </button>
+      
+      {isOpen && (
+        <div className="p-4 border-t-2 bg-white bg-opacity-50 space-y-3 animate-fade-in">
+          <div>
+            <p className="text-xs font-semibold text-slate-600 mb-1">Address:</p>
+            <p className="text-xs font-mono break-all bg-white p-2 rounded border">{address}</p>
+          </div>
+          
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-slate-600">Balance:</p>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRefresh()
+                }}
+                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                disabled={loading}
+              >
+                <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+            {loading ? (
+              <div className="flex items-center gap-2 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Loading...</span>
+              </div>
+            ) : balance ? (
+              <p className="text-lg font-bold">{balance} ALGO</p>
+            ) : (
+              <p className="text-sm text-slate-500">Click refresh to load</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  // ============================================
+  // RENDER
+  // ============================================
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4 lg:p-8">
       <div className="max-w-[1900px] mx-auto">
-        {/* Header */}
         <div className="text-center mb-8 lg:mb-12">
-          <Link href="/" className="inline-block mb-4 text-blue-600 hover:text-blue-700">
-            ← Back to Home
-          </Link>
           <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            AgenticFlow – vLEI Verified AI Agents
+            LEGENT – vLEI Verified AI Agents
           </h1>
           <p className="text-slate-600 text-sm lg:text-base font-medium">
-            Mutual Trust Delegation Verification System
-          </p>
-          <p className="text-slate-500 text-xs lg:text-sm mt-2">
-            Powered by vLEI Infrastructure on GoogleA2A
+            Complete Business Transaction Flow with Real Atomic Payments
           </p>
         </div>
 
-        {/* Mutual Trust Status Banner */}
-        {verificationStatus.mutualTrustEstablished && (
-          <div className="mb-8 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl p-6 shadow-lg animate-pulse">
-            <div className="flex items-center justify-center gap-3">
-              <span className="text-3xl">✅</span>
-              <div>
-                <h3 className="text-xl font-bold">Mutual Trust Established!</h3>
-                <p className="text-sm text-green-100">Both agents have verified each other's credentials via vLEI</p>
-              </div>
-            </div>
-          </div>
-        )}
+        <div className="grid gap-4 lg:gap-6 xl:grid-cols-[1fr_450px_1fr] lg:grid-cols-1">
 
-        {/* Three Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-          
-          {/* LEFT COLUMN - Buyer Agent Chat */}
-          <div className="lg:col-span-4">
-            <div className="bg-white rounded-2xl shadow-xl h-[700px] flex flex-col overflow-hidden border-2 border-blue-200">
-              {/* Buyer Header */}
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 lg:p-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-full bg-white/20 flex items-center justify-center text-xl lg:text-2xl">
-                    🛒
-                  </div>
-                  <div>
-                    <h2 className="text-lg lg:text-xl font-bold">Buyer Agent</h2>
-                    <p className="text-xs lg:text-sm text-blue-100">Procurement Specialist</p>
-                  </div>
+          {/* BUYER ORGANIZATION */}
+          <div className="border border-slate-300 rounded-xl shadow-sm overflow-hidden bg-white flex flex-col">
+            <div className="bg-white p-6 lg:p-8 border-b border-slate-300">
+              <div className="flex items-start gap-3 lg:gap-4">
+                <div className="bg-blue-100 p-2.5 lg:p-3 rounded-lg flex-shrink-0">
+                  <Building2 className="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" />
                 </div>
-                {buyerAgentData && (
-                  <div className="mt-3 text-xs bg-white/10 rounded-lg p-2">
-                    <div className="flex justify-between items-center">
-                      <span>Status:</span>
-                      <span className="font-semibold">
-                        {buyerAgentData.vleiVerified ? '✓ vLEI Verified' : '○ Pending'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Buyer Messages */}
-              <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3 bg-gradient-to-b from-blue-50/30 to-white">
-                {buyerMessages.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-                        msg.sender === 'user'
-                          ? 'bg-blue-600 text-white rounded-br-sm'
-                          : 'bg-white border border-blue-100 text-slate-800 rounded-bl-sm shadow-sm'
-                      }`}
-                    >
-                      <p className="text-sm leading-relaxed">{msg.text}</p>
-                      <span className={`text-[10px] mt-1 block ${
-                        msg.sender === 'user' ? 'text-blue-100' : 'text-slate-400'
-                      }`}>
-                        {msg.timestamp.toLocaleTimeString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Buyer Input */}
-              <form onSubmit={handleBuyerSubmit} className="p-4 bg-white border-t-2 border-blue-100">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={buyerInput}
-                    onChange={(e) => setBuyerInput(e.target.value)}
-                    placeholder="Type your message..."
-                    className="flex-1 px-4 py-2.5 border-2 border-blue-200 rounded-xl focus:outline-none focus:border-blue-500 text-sm"
-                  />
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium text-sm"
-                  >
-                    Send
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* Buyer Quick Commands */}
-            <div className="mt-4 bg-white rounded-xl p-4 shadow-md border border-blue-100">
-              <h3 className="text-sm font-semibold text-slate-700 mb-2">Quick Commands:</h3>
-              <div className="space-y-1.5 text-xs text-slate-600">
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
-                  <span><code className="bg-blue-50 px-1.5 py-0.5 rounded">fetch my agent</code> - Load buyer agent</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
-                  <span><code className="bg-blue-50 px-1.5 py-0.5 rounded">fetch seller agent</code> - Get seller info</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-600">•</span>
-                  <span><code className="bg-blue-50 px-1.5 py-0.5 rounded">verify seller</code> - Verify seller credentials</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* MIDDLE COLUMN - Verification Panel */}
-          <div className="lg:col-span-4">
-            <div className="bg-white rounded-2xl shadow-xl h-[700px] flex flex-col border-2 border-purple-200">
-              {/* Verification Header */}
-              <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl">
-                    🔐
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">Trust Verification</h2>
-                    <p className="text-sm text-purple-100">Mutual Delegation Check</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Verification Content */}
-              <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-                
-                {/* Workflow Diagram */}
-                <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
-                  <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                    <span className="text-lg">📊</span>
-                    Verification Workflow
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        buyerAgentData ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'
-                      }`}>
-                        1
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-700">Buyer Agent Initialization</p>
-                        <p className="text-xs text-slate-500">{buyerAgentData ? '✓ Complete' : 'Pending'}</p>
-                      </div>
-                    </div>
-
-                    <div className="ml-4 border-l-2 border-purple-300 h-6"></div>
-
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        sellerAgentData ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'
-                      }`}>
-                        2
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-700">Seller Agent Initialization</p>
-                        <p className="text-xs text-slate-500">{sellerAgentData ? '✓ Complete' : 'Pending'}</p>
-                      </div>
-                    </div>
-
-                    <div className="ml-4 border-l-2 border-purple-300 h-6"></div>
-
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        sellerAgentFromBuyerData ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'
-                      }`}>
-                        3
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-700">Cross-Agent Discovery</p>
-                        <p className="text-xs text-slate-500">{sellerAgentFromBuyerData && buyerAgentFromSellerData ? '✓ Complete' : 'Pending'}</p>
-                      </div>
-                    </div>
-
-                    <div className="ml-4 border-l-2 border-purple-300 h-6"></div>
-
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        verificationStatus.buyerVerified && verificationStatus.sellerVerified ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'
-                      }`}>
-                        4
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-700">Mutual Verification</p>
-                        <p className="text-xs text-slate-500">
-                          {verificationStatus.buyerVerified && verificationStatus.sellerVerified ? '✓ Complete' : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="ml-4 border-l-2 border-purple-300 h-6"></div>
-
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        verificationStatus.mutualTrustEstablished ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'
-                      }`}>
-                        5
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-700">Trust Established</p>
-                        <p className="text-xs text-slate-500">
-                          {verificationStatus.mutualTrustEstablished ? '✓ Ready for Transaction' : 'Not Ready'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Verification Status */}
-                <div className="bg-white rounded-xl p-5 border-2 border-slate-200">
-                  <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                    <span className="text-lg">📋</span>
-                    Current Status
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-700">Buyer Verified</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        verificationStatus.buyerVerified 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {verificationStatus.buyerVerified ? '✓ Yes' : '○ No'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-700">Seller Verified</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        verificationStatus.sellerVerified 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {verificationStatus.sellerVerified ? '✓ Yes' : '○ No'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <span className="text-sm text-slate-700">Mutual Trust</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        verificationStatus.mutualTrustEstablished 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {verificationStatus.mutualTrustEstablished ? '✓ Established' : '○ Pending'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* vLEI Information */}
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-200">
-                  <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                    <span className="text-lg">🔒</span>
-                    vLEI Infrastructure
-                  </h3>
-                  <p className="text-xs text-slate-600 leading-relaxed mb-3">
-                    Verifiable Legal Entity Identifiers (vLEI) provide cryptographic proof of organizational identity and authority delegation.
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-base lg:text-lg font-semibold text-slate-900 mb-2 lg:mb-3">
+                    Buyer Organization
+                  </h2>
+                  <p className="text-sm lg:text-base text-slate-700 font-medium mb-2 break-words">
+                    {LEI_DATA.tommy.name}
                   </p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-white rounded-lg p-2 border border-blue-200">
-                      <div className="font-semibold text-blue-700">Cryptographic</div>
-                      <div className="text-slate-600">Signatures</div>
-                    </div>
-                    <div className="bg-white rounded-lg p-2 border border-blue-200">
-                      <div className="font-semibold text-blue-700">Decentralized</div>
-                      <div className="text-slate-600">Verification</div>
-                    </div>
-                    <div className="bg-white rounded-lg p-2 border border-blue-200">
-                      <div className="font-semibold text-blue-700">Immutable</div>
-                      <div className="text-slate-600">Records</div>
-                    </div>
-                    <div className="bg-white rounded-lg p-2 border border-blue-200">
-                      <div className="font-semibold text-blue-700">Global</div>
-                      <div className="text-slate-600">Standards</div>
-                    </div>
+                  <div className="space-y-2 lg:space-y-3 text-xs lg:text-sm text-slate-600 mb-4">
+                    <p>
+                      <strong className="font-semibold">LEI:</strong>{" "}
+                      <span className="break-all">{LEI_DATA.tommy.lei}</span>
+                    </p>
                   </div>
+                  
+                  {/* Buyer Wallet */}
+                  <WalletDisplay
+                    label="Buyer Wallet"
+                    address={BUYER_WALLET}
+                    balance={buyerBalance}
+                    loading={loadingBuyerBalance}
+                    isOpen={showBuyerWallet}
+                    onToggle={() => setShowBuyerWallet(!showBuyerWallet)}
+                    onRefresh={refreshBuyerBalance}
+                    color="border-blue-300 bg-blue-50"
+                  />
                 </div>
-
-                {/* Agent Data Display */}
-                {(buyerAgentData || sellerAgentData) && (
-                  <div className="bg-white rounded-xl p-5 border-2 border-slate-200">
-                    <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                      <span className="text-lg">🤖</span>
-                      Active Agents
-                    </h3>
-                    <div className="space-y-4">
-                      {buyerAgentData && (
-                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-semibold text-blue-900">
-                              {buyerAgentData.name}
-                            </span>
-                            <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">
-                              Buyer
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-600 space-y-1">
-                            <div>ID: {buyerAgentData.id}</div>
-                            <div>Role: {buyerAgentData.role}</div>
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {buyerAgentData.credentials.map((cred, idx) => (
-                                <span key={idx} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px]">
-                                  {cred}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      {sellerAgentData && (
-                        <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-semibold text-orange-900">
-                              {sellerAgentData.name}
-                            </span>
-                            <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">
-                              Seller
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-600 space-y-1">
-                            <div>ID: {sellerAgentData.id}</div>
-                            <div>Role: {sellerAgentData.role}</div>
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {sellerAgentData.credentials.map((cred, idx) => (
-                                <span key={idx} className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px]">
-                                  {cred}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
               </div>
             </div>
-          </div>
 
-          {/* RIGHT COLUMN - Seller Agent Chat */}
-          <div className="lg:col-span-4">
-            <div className="bg-white rounded-2xl shadow-xl h-[700px] flex flex-col overflow-hidden border-2 border-orange-200">
-              {/* Seller Header */}
-              <div className="bg-gradient-to-r from-orange-600 to-orange-700 text-white p-4 lg:p-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 lg:w-12 lg:h-12 rounded-full bg-white/20 flex items-center justify-center text-xl lg:text-2xl">
-                    💼
-                  </div>
-                  <div>
-                    <h2 className="text-lg lg:text-xl font-bold">Seller Agent</h2>
-                    <p className="text-xs lg:text-sm text-orange-100">Sales Representative</p>
-                  </div>
-                </div>
-                {sellerAgentData && (
-                  <div className="mt-3 text-xs bg-white/10 rounded-lg p-2">
-                    <div className="flex justify-between items-center">
-                      <span>Status:</span>
-                      <span className="font-semibold">
-                        {sellerAgentData.vleiVerified ? '✓ vLEI Verified' : '○ Pending'}
-                      </span>
+            {agenticStep === 'business-ready' && (
+              <div className="flex-1 bg-gradient-to-br from-slate-50 to-blue-50 p-6 lg:p-8 border-b border-slate-300 overflow-y-auto">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-4">
+                    <MessageSquare className="w-5 h-5 text-blue-600" />
+                    Business Messages
+                  </h3>
+
+                  {showPOForm && (
+                    <div className="bg-white p-6 rounded-xl border-2 border-blue-300 shadow-lg animate-fade-in">
+                      <h4 className="text-lg font-bold text-blue-900 mb-4">Create Purchase Order</h4>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-sm font-semibold text-slate-700 block mb-1">PO Number</label>
+                          <input
+                            type="text"
+                            value={poData.poNumber}
+                            onChange={(e) => setPOData(prev => ({ ...prev, poNumber: e.target.value }))}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                          />
+                        </div>
+
+                        {poData.items.map((item, index) => (
+                          <div key={index} className="border border-slate-200 p-4 rounded-lg space-y-2">
+                            <input
+                              type="text"
+                              placeholder="Item name"
+                              value={item.name}
+                              onChange={(e) => updatePOItem(index, 'name', e.target.value)}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                            />
+                            <div className="grid grid-cols-3 gap-2">
+                              <input
+                                type="number"
+                                placeholder="Qty"
+                                value={item.quantity}
+                                onChange={(e) => updatePOItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Unit $"
+                                value={item.unitPrice}
+                                onChange={(e) => updatePOItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                              />
+                              <input
+                                type="number"
+                                value={item.total}
+                                readOnly
+                                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50"
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        <button
+                          onClick={addPOItem}
+                          className="text-blue-600 text-sm font-semibold hover:text-blue-700"
+                        >
+                          + Add Item
+                        </button>
+
+                        <div className="pt-4 border-t border-slate-200">
+                          <p className="text-lg font-bold text-slate-900">
+                            Total: {calculatePOTotal().toLocaleString()} units
+                          </p>
+                          <p className="text-sm text-slate-600 mt-1">
+                            Payment: {(calculatePOTotal() / 100000).toFixed(2)} ALGO
+                          </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <button
+                            onClick={sendPO}
+                            className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+                          >
+                            Send PO
+                          </button>
+                          <button
+                            onClick={() => setShowPOForm(false)}
+                            className="px-6 bg-slate-200 text-slate-700 py-3 rounded-lg hover:bg-slate-300 transition-colors font-semibold"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
                     </div>
+                  )}
+
+                  {businessMessages.length > 0 && (
+                    <div className="space-y-3">
+                      {businessMessages.map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={`p-4 rounded-xl border-2 ${
+                            msg.from === 'buyer'
+                              ? 'bg-blue-50 border-blue-200 ml-8'
+                              : 'bg-green-50 border-green-200 mr-8'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              {msg.from === 'buyer' ? (
+                                <User className="w-5 h-5 text-blue-600" />
+                              ) : (
+                                <Building className="w-5 h-5 text-green-600" />
+                              )}
+                              <span className="font-bold text-sm">
+                                {msg.from === 'buyer' ? 'Buyer' : 'Seller'}
+                              </span>
+                            </div>
+                            {msg.status === 'pending' && (
+                              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full flex items-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                Verifying
+                              </span>
+                            )}
+                            {msg.status === 'verified' && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" />
+                                Verified
+                              </span>
+                            )}
+                          </div>
+                          
+                          <p className="text-sm font-semibold text-slate-900 mb-1">{msg.content}</p>
+                          <p className="text-xs text-slate-500">{msg.timestamp.toLocaleString()}</p>
+
+                          {(msg.type === 'payment' || msg.type === 'invoice_payment' || msg.type === 'receipt_payment') && msg.attachment && (
+                            <div className="mt-3 pt-3 border-t border-slate-200">
+                              <p className="text-xs font-semibold text-slate-700 mb-2">💰 Payment Details</p>
+                              <div className="text-xs text-slate-600 space-y-1">
+                                <p>Amount: {(msg.attachment as PaymentData).amount} ALGO</p>
+                                <p>Platform Fee: {(msg.attachment as PaymentData).platformFee.toFixed(4)} ALGO</p>
+                                <p>Total Paid: {(msg.attachment as PaymentData).totalPaid.toFixed(4)} ALGO</p>
+                                <p>TX: {(msg.attachment as PaymentData).transactionHash}</p>
+                                <a
+                                  href={(msg.attachment as PaymentData).peraExplorerLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-700 flex items-center gap-1 mt-2"
+                                >
+                                  View on Pera Explorer <ExternalLink className="w-3 h-3" />
+                                </a>
+                              </div>
+                            </div>
+                          )}
+
+                          {msg.type === 'invoice' && msg.attachment && (
+                            <div className="mt-3 pt-3 border-t border-slate-200">
+                              <p className="text-xs font-semibold text-slate-700 mb-2">📄 Invoice Attached</p>
+                              <div className="text-xs text-slate-600 space-y-1">
+                                <p>Invoice #: {(msg.attachment as InvoiceData).invoiceNumber}</p>
+                                <p>Amount: {(msg.attachment as InvoiceData).totalAmount.toFixed(2)} ALGO</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {msg.type === 'warehouse_receipt' && msg.attachment && (
+                            <div className="mt-3 pt-3 border-t border-slate-200">
+                              <p className="text-xs font-semibold text-slate-700 mb-2">📦 Warehouse Receipt</p>
+                              <div className="text-xs text-slate-600 space-y-1">
+                                <p>Receipt #: {(msg.attachment as WarehouseReceiptData).receiptNumber}</p>
+                                <p>Items: {(msg.attachment as WarehouseReceiptData).items.length}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {agenticStep !== 'business-ready' && (
+              <div className="flex-1 bg-gradient-to-br from-slate-50 to-blue-50 p-6 lg:p-8 border-b border-slate-300 overflow-y-auto">
+                <div className="w-full text-center py-16 text-slate-400">
+                  <Bot className="w-20 h-20 mx-auto mb-4 opacity-20" />
+                  <p className="text-base font-medium">Complete agent verification</p>
+                  <p className="text-sm mt-2">Type "fetch my agent" to start</p>
+                  <p className="text-xs mt-1 text-slate-300">Then: fetch seller agent → send po</p>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border-t border-slate-300">
+              <div className="h-48 overflow-y-auto p-4 space-y-2">
+                {chatMessages.length === 0 && (
+                  <div className="text-center text-sm text-slate-500 py-8">
+                    <p>Type a command to start:</p>
+                    <p className="text-xs mt-1">• fetch my agent</p>
+                    <p className="text-xs">• fetch seller agent</p>
+                    <p className="text-xs">• send po</p>
                   </div>
                 )}
-              </div>
-
-              {/* Seller Messages */}
-              <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3 bg-gradient-to-b from-orange-50/30 to-white">
-                {sellerMessages.map((msg, idx) => (
+                {chatMessages.map((msg) => (
                   <div
-                    key={idx}
-                    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                    key={msg.id}
+                    className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-                        msg.sender === 'user'
-                          ? 'bg-orange-600 text-white rounded-br-sm'
-                          : 'bg-white border border-orange-100 text-slate-800 rounded-bl-sm shadow-sm'
+                      className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                        msg.type === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white border border-slate-200 text-slate-800'
                       }`}
                     >
-                      <p className="text-sm leading-relaxed">{msg.text}</p>
-                      <span className={`text-[10px] mt-1 block ${
-                        msg.sender === 'user' ? 'text-orange-100' : 'text-slate-400'
-                      }`}>
-                        {msg.timestamp.toLocaleTimeString()}
-                      </span>
+                      {msg.text}
                     </div>
                   </div>
                 ))}
+                <div ref={chatEndRef} />
               </div>
 
-              {/* Seller Input */}
-              <form onSubmit={handleSellerSubmit} className="p-4 bg-white border-t-2 border-orange-100">
+              <div className="p-4 border-t border-slate-200">
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={sellerInput}
-                    onChange={(e) => setSellerInput(e.target.value)}
-                    placeholder="Type your message..."
-                    className="flex-1 px-4 py-2.5 border-2 border-orange-200 rounded-xl focus:outline-none focus:border-orange-500 text-sm"
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    placeholder="Type a command..."
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
-                    type="submit"
-                    className="px-6 py-2.5 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition-colors font-medium text-sm"
+                    onClick={handleSendMessage}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    Send
+                    <Send className="w-4 h-4" />
                   </button>
-                </div>
-              </form>
-            </div>
-
-            {/* Seller Quick Commands */}
-            <div className="mt-4 bg-white rounded-xl p-4 shadow-md border border-orange-100">
-              <h3 className="text-sm font-semibold text-slate-700 mb-2">Quick Commands:</h3>
-              <div className="space-y-1.5 text-xs text-slate-600">
-                <div className="flex items-start gap-2">
-                  <span className="text-orange-600">•</span>
-                  <span><code className="bg-orange-50 px-1.5 py-0.5 rounded">fetch my agent</code> - Load seller agent</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-orange-600">•</span>
-                  <span><code className="bg-orange-50 px-1.5 py-0.5 rounded">fetch buyer agent</code> - Get buyer info</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-orange-600">•</span>
-                  <span><code className="bg-orange-50 px-1.5 py-0.5 rounded">verify buyer</code> - Verify buyer credentials</span>
                 </div>
               </div>
             </div>
           </div>
 
-        </div>
+          {/* MIDDLE SECTION: VERIFICATION PROGRESS + PLATFORM WALLET */}
+          <div className="border border-indigo-200 rounded-xl p-6 lg:p-10 shadow-sm bg-white xl:sticky xl:top-8 h-fit space-y-6">
+            {/* Marketplace Wallet */}
+            <WalletDisplay
+              label={`Marketplace Wallet (Fee: ${MARKETPLACE_FEE}%)`}
+              address={MARKETPLACE_WALLET}
+              balance={platformBalance}
+              loading={loadingPlatformBalance}
+              isOpen={showPlatformWallet}
+              onToggle={() => setShowPlatformWallet(!showPlatformWallet)}
+              onRefresh={refreshPlatformBalance}
+              color="border-purple-300 bg-purple-50"
+            />
 
-        {/* Footer Information */}
-        <div className="mt-8 bg-white rounded-xl p-6 shadow-md border border-slate-200">
-          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <span className="text-xl">💡</span>
-            How It Works
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-            <div>
-              <h4 className="font-semibold text-blue-700 mb-2">1. Agent Initialization</h4>
-              <p className="text-slate-600">
-                Both buyer and seller agents initialize with their vLEI credentials, establishing their identity and authority.
-              </p>
+            <h3 className="text-base lg:text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <Shield className="w-4 h-4 lg:w-5 lg:h-5 text-indigo-600" />
+              Transaction Progress
+            </h3>
+
+            <div className="space-y-4">
+              <div className={`p-4 rounded-lg border-2 ${buyerAgentData ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200'}`}>
+                <p className="text-sm font-semibold">1. Agents Verified</p>
+                {buyerAgentData && sellerAgentVerified && <Check className="w-5 h-5 text-blue-600 mt-2" />}
+              </div>
+
+              <div className={`p-4 rounded-lg border-2 ${poResponseStatus === 'accept' ? 'bg-green-50 border-green-300' : 'bg-slate-50 border-slate-200'}`}>
+                <p className="text-sm font-semibold">2. PO Accepted</p>
+                {poResponseStatus === 'accept' && <Check className="w-5 h-5 text-green-600 mt-2" />}
+              </div>
+
+              <div className={`p-4 rounded-lg border-2 ${businessMessages.some(m => m.type === 'payment') ? 'bg-purple-50 border-purple-300' : 'bg-slate-50 border-slate-200'}`}>
+                <p className="text-sm font-semibold">3. 20% Payment</p>
+                {businessMessages.some(m => m.type === 'payment') && <Check className="w-5 h-5 text-purple-600 mt-2" />}
+              </div>
+
+              <div className={`p-4 rounded-lg border-2 ${businessMessages.some(m => m.type === 'invoice') ? 'bg-orange-50 border-orange-300' : 'bg-slate-50 border-slate-200'}`}>
+                <p className="text-sm font-semibold">4. Invoice Received</p>
+                {businessMessages.some(m => m.type === 'invoice') && <Check className="w-5 h-5 text-orange-600 mt-2" />}
+              </div>
+
+              <div className={`p-4 rounded-lg border-2 ${businessMessages.some(m => m.type === 'invoice_payment') ? 'bg-pink-50 border-pink-300' : 'bg-slate-50 border-slate-200'}`}>
+                <p className="text-sm font-semibold">5. Invoice Paid</p>
+                {businessMessages.some(m => m.type === 'invoice_payment') && <Check className="w-5 h-5 text-pink-600 mt-2" />}
+              </div>
+
+              <div className={`p-4 rounded-lg border-2 ${businessMessages.some(m => m.type === 'warehouse_receipt') ? 'bg-teal-50 border-teal-300' : 'bg-slate-50 border-slate-200'}`}>
+                <p className="text-sm font-semibold">6. Receipt Received</p>
+                {businessMessages.some(m => m.type === 'warehouse_receipt') && <Check className="w-5 h-5 text-teal-600 mt-2" />}
+              </div>
+
+              <div className={`p-4 rounded-lg border-2 ${businessMessages.some(m => m.type === 'receipt_payment') ? 'bg-indigo-50 border-indigo-300' : 'bg-slate-50 border-slate-200'}`}>
+                <p className="text-sm font-semibold">7. Receipt Paid</p>
+                {businessMessages.some(m => m.type === 'receipt_payment') && (
+                  <div className="mt-2">
+                    <Check className="w-5 h-5 text-indigo-600" />
+                    <p className="text-xs text-indigo-700 mt-1 font-semibold">Complete!</p>
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <h4 className="font-semibold text-purple-700 mb-2">2. Cross-Verification</h4>
-              <p className="text-slate-600">
-                Each agent fetches and verifies the other's credentials through the vLEI infrastructure, ensuring authenticity.
-              </p>
+          </div>
+
+          {/* SELLER ORGANIZATION */}
+          <div className="border border-slate-300 rounded-xl shadow-sm overflow-hidden bg-white flex flex-col">
+            <div className="bg-white p-6 lg:p-8 border-b border-slate-300">
+              <div className="flex items-start gap-3 lg:gap-4">
+                <div className="bg-green-100 p-2.5 lg:p-3 rounded-lg flex-shrink-0">
+                  <Building className="w-5 h-5 lg:w-6 lg:h-6 text-green-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-base lg:text-lg font-semibold text-slate-900 mb-2 lg:mb-3">
+                    Seller Organization
+                  </h2>
+                  <p className="text-sm lg:text-base text-slate-700 font-medium mb-2 break-words">
+                    {LEI_DATA.jupiter.name}
+                  </p>
+                  <div className="space-y-2 lg:space-y-3 text-xs lg:text-sm text-slate-600 mb-4">
+                    <p>
+                      <strong className="font-semibold">LEI:</strong>{" "}
+                      <span className="break-all">{LEI_DATA.jupiter.lei}</span>
+                    </p>
+                  </div>
+                  
+                  {/* Seller Wallet */}
+                  <WalletDisplay
+                    label="Seller Wallet"
+                    address={SELLER_WALLET}
+                    balance={sellerBalance}
+                    loading={loadingSellerBalance}
+                    isOpen={showSellerWallet}
+                    onToggle={() => setShowSellerWallet(!showSellerWallet)}
+                    onRefresh={refreshSellerBalance}
+                    color="border-green-300 bg-green-50"
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <h4 className="font-semibold text-green-700 mb-2">3. Trust Establishment</h4>
-              <p className="text-slate-600">
-                Once both agents verify each other, mutual trust is established and transaction can proceed securely.
-              </p>
+
+            {sellerAgenticStep === 'business-ready' && (
+              <div className="flex-1 bg-gradient-to-br from-slate-50 to-green-50 p-6 lg:p-8 border-b border-slate-300 overflow-y-auto">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-green-600" />
+                    Incoming Messages
+                  </h3>
+
+                  {pendingPO && !poResponseStatus && (
+                    <div className="bg-white p-6 rounded-xl border-2 border-green-300 shadow-lg">
+                      <h4 className="text-lg font-bold text-green-900 mb-4">Purchase Order Processing</h4>
+                      
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm font-semibold text-slate-700">PO Number:</span>
+                          <span className="text-sm text-slate-900">{pendingPO.poNumber}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm font-semibold text-slate-700">Total Amount:</span>
+                          <span className="text-lg font-bold text-green-700">
+                            {pendingPO.totalAmount.toLocaleString()} units
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-xs text-slate-600">Payment:</span>
+                          <span className="text-sm font-semibold text-green-600">
+                            {(pendingPO.totalAmount / 100000).toFixed(2)} ALGO
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-green-600 mt-4">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span className="text-sm font-semibold">Auto-accepting...</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {poResponseStatus && (
+                    <div className={`p-4 rounded-lg border-2 ${
+                      poResponseStatus === 'accept' 
+                        ? 'bg-green-50 border-green-300'
+                        : 'bg-red-50 border-red-300'
+                    }`}>
+                      <p className="text-sm font-semibold">
+                        {poResponseStatus === 'accept' 
+                          ? '✅ PO Accepted! Processing order...'
+                          : '❌ PO Rejected.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {sellerAgenticStep !== 'business-ready' && (
+              <div className="flex-1 bg-gradient-to-br from-slate-50 to-green-50 p-6 lg:p-8 border-b border-slate-300 overflow-y-auto">
+                <div className="w-full text-center py-16 text-slate-400">
+                  <Bot className="w-20 h-20 mx-auto mb-4 opacity-20" />
+                  <p className="text-base font-medium">Complete agent verification</p>
+                  <p className="text-sm mt-2">Type "fetch my agent" to start</p>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-slate-50 border-t border-slate-300">
+              <div className="h-48 overflow-y-auto p-4 space-y-2">
+                {sellerChatMessages.length === 0 && (
+                  <div className="text-center text-sm text-slate-500 py-8">
+                    <p>Type a command to start:</p>
+                    <p className="text-xs mt-1">• fetch my agent</p>
+                    <p className="text-xs">• fetch buyer agent</p>
+                  </div>
+                )}
+                {sellerChatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                        msg.type === 'user'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-white border border-slate-200 text-slate-800'
+                      }`}
+                    >
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                <div ref={chatEndRefSeller} />
+              </div>
+
+              <div className="p-4 border-t border-slate-200">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={sellerInputMessage}
+                    onChange={(e) => setSellerInputMessage(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSellerSendMessage()}
+                    placeholder="Type a command..."
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <button
+                    onClick={handleSellerSendMessage}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
