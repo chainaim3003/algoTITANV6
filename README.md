@@ -10,7 +10,7 @@ Ensure the following are installed before proceeding:
 - **Git**
 - **WSL2 (Ubuntu)** if using Windows
 
-
+## Steps to setup VLEI Infrastructure
 ## 🏗️ Step 1: Create Project Workspace and Copy Files
 
 ```bash
@@ -62,3 +62,98 @@ docker compose build --no-cache
 
 
 ./test-agent-verification-DEEP.sh
+
+## Steps to setup API Server
+Navigate to ~/projects/LEGENT/algoTITANV5/LegentvLEI/api-server (subject to change according to your path)
+Run : npm install
+Run : node server.js
+
+# A2A Servers Setup Guide
+
+This guide will help you set up and run the A2A (Agent-to-Agent) buyer and seller servers.
+
+## Prerequisites
+
+- Node.js installed on your system
+- npm (Node Package Manager)
+
+## Installation
+
+1. Navigate to the JavaScript directory:
+```bash
+cd js
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+## Running the Servers
+
+The A2A system requires two separate servers to be running simultaneously: the buyer agent and the seller agent.
+
+### Starting the Buyer Agent
+
+In your first terminal:
+
+```bash
+cd js
+npm run agents:buyer
+```
+
+### Starting the Seller Agent
+
+In a second terminal:
+
+```bash
+cd js
+npm run agents:seller
+```
+
+## Accessing the Servers
+
+Once both servers are running, they will be available at their respective endpoints. Check the terminal output for the specific URLs where each agent is listening.
+
+## Troubleshooting
+
+- **Port conflicts**: If you encounter port conflicts, ensure no other services are running on the required ports
+- **Installation errors**: Try deleting the `node_modules` folder and `package-lock.json`, then run `npm install` again
+- **Missing dependencies**: Ensure you're running `npm install` from the correct `js` directory
+
+## Stopping the Servers
+
+To stop either server, press `Ctrl+C` in the respective terminal window.
+
+---
+
+Within Legent
+
+Navigate to //wsl.localhost/Ubuntu/home/deepitha/projects/LEGENT/algoTITANV5/Legent/UI
+npm install
+npm run dev 
+
+The application should open up in localhost:3000
+
+Instructions :
+On the Buyer Agent chat window, type "fetch my agent" followed by "fetch seller agent"
+On the Seller Agent chat window, type "fetch my agent" followed by "fetch buyer agent"
+
+This will start the mutual cross verification or proof of delegation of the agents.
+
+Navigate to /home/deepitha/projects/LEGENT/algoTITANV5/Legent/Frontend2/UI
+npm install
+npm run dev
+
+Repeat the same steps :
+On the Buyer Agent chat window, type "fetch my agent" followed by "fetch seller agent"
+On the Seller Agent chat window, type "fetch my agent" followed by "fetch buyer agent"
+
+
+From the Seller side, "Send Invoice"
+
+
+
+
+
+
