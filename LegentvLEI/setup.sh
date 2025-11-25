@@ -14,7 +14,10 @@ echo "🚀 Setting up vLEI Environment..."
 
 # cp -r /mnt/c/SATHYA/CHAINAIM3003/mcp-servers/stellarboston/vLEI1/vLEIWorkLinux1/* ~/projects/vLEIWorkLinux1/
 
-cp -r /mnt/c/SATHYA/CHAINAIM3003/mcp-servers/stellarboston/LegentAlgoTITANV61/algoTITANV6/LegentvLEI/* ~/projects/
+#cp -r /mnt/c/SATHYA/CHAINAIM3003/mcp-servers/stellarboston/LegentAlgoTITANV61/algoTITANV6/LegentvLEI/* ~/projects/
+
+cp -r /mnt/c/SATHYA/CHAINAIM3003/mcp-servers/stellarboston/LegentAlgoTITANV51/algoTITANV5/LegentvLEI/* ~/projects/algoTitanV51/LegentvLEI
+cp -r /mnt/c/SATHYA/CHAINAIM3003/mcp-servers/stellarboston/LegentAlgoTITANV61/algoTITANV6/LegentvLEI/* ~/projects/algoTitanV61/LegentvLEI
 
 # IF you have already created the project, please navigate to that dir.
 # cd ~/projects/vLEIWorkLinux1
