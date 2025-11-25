@@ -2,6 +2,13 @@
 
 This document provides a **complete step-by-step guide** to set up, clean, and deploy the **LEGENT VLEI SETUP** using **Docker** on **Ubuntu / WSL2**.
 
+![WhatsApp Image 2025-11-25 at 14 01 30_ad53eee8](https://github.com/user-attachments/assets/158b6507-0e5a-4eef-a788-bd8764030c12)
+
+youtube link for reference:
+https://www.youtube.com/watch?v=tgHEHFWF9Wc&t=2s
+
+reference materials:
+https://drive.google.com/drive/folders/1OSrtbgRJGEFIHHs2f-egqZo9dflh05jW
 
 ## ⚙️ Prerequisites
 
