@@ -67,7 +67,7 @@ docker compose build --no-cache
 ./deploy.sh
 
 🚀 Step 7: Run the Full vLEI Workflow
-./run-all.sh
+
 
 ./run-all-buyerseller-2-with-agents.sh   
 
