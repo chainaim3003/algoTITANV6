@@ -4,8 +4,21 @@ This document provides a **complete step-by-step guide** to set up, clean, and d
 
 ![WhatsApp Image 2025-11-25 at 14 01 30_ad53eee8](https://github.com/user-attachments/assets/158b6507-0e5a-4eef-a788-bd8764030c12)
 
+
+
+
+![mut-pic-1](https://github.com/user-attachments/assets/878fab07-3fc7-429f-be35-6297c8dcc18e)
+
+
+
+
+![mut-pic-3](https://github.com/user-attachments/assets/0d7fc997-5b97-4900-9816-24087cfd137f)
+
+
+
 youtube link for reference:
 https://www.youtube.com/watch?v=tgHEHFWF9Wc&t=2s
+
 
 reference materials:
 https://drive.google.com/drive/folders/1OSrtbgRJGEFIHHs2f-egqZo9dflh05jW
