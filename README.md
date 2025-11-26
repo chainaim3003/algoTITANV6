@@ -25,7 +25,9 @@ Ensure the following are installed before proceeding:
 mkdir -p ~/projects
 
 # Copy the vLEI Hackathon project from your Windows folder into your Linux workspace
-cp -r /mnt/c/CHAINAIM3003/mcp-servers/vLEINew1/vlei-hackathon-2025-workshop-master ~/projects/
+
+#cp -r /mnt/c/CHAINAIM3003/mcp-servers/vLEINew1/vlei-hackathon-2025-workshop-master ~/projects/
+cp -r <YOUR LOCAL DIRECTORY>/vLEINew1/vlei-hackathon-2025-workshop-master ~/projects/<YOUR DESTINATION DIE>
 
 (subject to change according to your windows file system location of the directory)
 
