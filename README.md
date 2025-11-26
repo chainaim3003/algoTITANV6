@@ -32,7 +32,9 @@ cp -r <YOUR LOCAL DIRECTORY>/vLEINew1/vlei-hackathon-2025-workshop-master ~/proj
 (subject to change according to your windows file system location of the directory)
 
 # Navigate to the working directory
-cd ~/projects/vLEIWorkLinux1
+#cd ~/projects/vLEIWorkLinux1
+
+cd ~/projects/<YOUR DESTINATION DIRECTORY>
 
 
 🧰 Step 2: Install Required Tools
@@ -74,6 +76,10 @@ docker compose build --no-cache
 
 ## Steps to setup API Server
 Navigate to ~/projects/LEGENT/algoTITANV5/LegentvLEI/api-server (subject to change according to your path)
+
+Navigate to ~/projects/<YOUR DESTINATTION DIRECTORY>/LegentvLEI/api-server (subject to change according to your path)
+
+
 Run : npm install
 Run : node server.js
 
@@ -104,6 +110,9 @@ The A2A system requires two separate servers to be running simultaneously: the b
 
 ### Starting the Buyer Agent
 
+<YOUR DIR>\algoTITANV6\Legent\A2A\js\src\agents\buyer-agent
+
+
 In your first terminal:
 
 ```bash
@@ -112,6 +121,8 @@ npm run agents:buyer
 ```
 
 ### Starting the Seller Agent
+
+<YOUR DIR>\algoTITANV6\Legent\A2A\js\src\agents\seller-agent
 
 In a second terminal:
 
@@ -138,7 +149,11 @@ To stop either server, press `Ctrl+C` in the respective terminal window.
 
 Within Legent
 
-Navigate to //wsl.localhost/Ubuntu/home/deepitha/projects/LEGENT/algoTITANV5/Legent/UI
+#Navigate to //wsl.localhost/Ubuntu/home/deepitha/projects/LEGENT/algoTITANV6/Legent/UI
+
+Navigate to //<YOUR DIR/LEGENT/algoTITANV6/Legent/UI
+
+
 npm install
 npm run dev 
 
@@ -150,7 +165,9 @@ On the Seller Agent chat window, type "fetch my agent" followed by "fetch buyer 
 
 This will start the mutual cross verification or proof of delegation of the agents.
 
-Navigate to /home/deepitha/projects/LEGENT/algoTITANV5/Legent/Frontend2/UI
+#Navigate to /home/deepitha/projects/LEGENT/algoTITANV6/Legent/Frontend2/UI
+Navigate to <YOUR DIR>/LEGENT/algoTITANV6/Legent/Frontend2/UI
+
 npm install
 npm run dev
 
