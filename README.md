@@ -27,10 +27,8 @@ https://www.youtube.com/watch?v=tgHEHFWF9Wc&t=2s
 
 
 reference materials:
+
 https://drive.google.com/drive/folders/1OSrtbgRJGEFIHHs2f-egqZo9dflh05jW
-
-
-
 
 
 ## ⚙️ Prerequisites
