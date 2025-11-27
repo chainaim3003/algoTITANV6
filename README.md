@@ -16,12 +16,22 @@ This document provides a **complete step-by-step guide** to set up, clean, and d
 
 
 
+
+
+![Slide7](https://github.com/user-attachments/assets/27bd6ea1-1651-4428-8d67-3e17857d90eb)
+
+
+
 youtube link for reference:
 https://www.youtube.com/watch?v=tgHEHFWF9Wc&t=2s
 
 
 reference materials:
 https://drive.google.com/drive/folders/1OSrtbgRJGEFIHHs2f-egqZo9dflh05jW
+
+
+
+
 
 ## ⚙️ Prerequisites
 
@@ -133,6 +143,10 @@ cd js
 npm run agents:buyer
 ```
 
+Please remember to copy the .env.local file contents in to a .env file. ( This is NOT checked in for security reasons). For demo, you can copy over the .env.local contents
+which are test accounts only. 
+
+
 ### Starting the Seller Agent
 
 <YOUR DIR>\algoTITANV6\Legent\A2A\js\src\agents\seller-agent
@@ -143,6 +157,9 @@ In a second terminal:
 cd js
 npm run agents:seller
 ```
+
+Please remember to copy the .env.local file contents in to a .env file. ( This is NOT checked in for security reasons). For demo, you can copy over the .env.local contents
+which are test accounts only. 
 
 ## Accessing the Servers
 
@@ -179,6 +196,7 @@ On the Seller Agent chat window, type "fetch my agent" followed by "fetch buyer 
 This will start the mutual cross verification or proof of delegation of the agents.
 
 #Navigate to /home/deepitha/projects/LEGENT/algoTITANV6/Legent/Frontend2/UI
+
 Navigate to <YOUR DIR>/LEGENT/algoTITANV6/Legent/Frontend2/UI
 
 npm install
@@ -190,6 +208,19 @@ On the Seller Agent chat window, type "fetch my agent" followed by "fetch buyer 
 
 
 From the Seller side, "Send Invoice"
+
+
+
+For the full application flow , please also 
+
+#Navigate to /home/deepitha/projects/LEGENT/algoTITANV6/unified-app
+
+Navigate to <YOUR DIR>/LEGENT/algoTITANV6/unified-app
+
+
+Please remember to copy the .env.local file contents in to a .env file. ( This is NOT checked in for security reasons). For demo, you can copy over the .env.local contents
+which are test accounts only. 
+
 
 
 
