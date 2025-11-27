@@ -40,7 +40,7 @@ import {
 // ============================================
 // API CONFIGURATION
 // ============================================
-const USE_MOCK_VERIFICATION = true // Set to false for real API calls
+const USE_MOCK_VERIFICATION = false // DEEP-EXT: Always use real API calls
 const API_BASE_URL = 'http://localhost:4000'
 
 // Get marketplace fee from environment (percentage like 0.25) and convert to decimal (0.0025)
@@ -396,16 +396,59 @@ export default function AgenticFlow() {
   }, [buyerAgentVerified])
 
   // ============================================
-  // CORE VERIFICATION FUNCTION
+  // FETCH AGENT CARD ONLY (NO VERIFICATION)
+  // Used for "Fetch My Agent" - reading own agent card
   // ============================================
-  const fetchAndVerifyAgent = async (
-    agentType: 'buyer' | 'seller',
+  const fetchAgentCardOnly = async (
     agentUrl: string
   ): Promise<{ success: boolean; agentCard?: AgentCard; error?: string }> => {
     try {
-      console.log(`🔄 Fetching ${agentType} agent card from: ${agentUrl}`)
+      console.log(`🔄 Fetching own agent card from: ${agentUrl}`)
       
       const response = await fetch(agentUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agent card: ${response.status}`)
+      }
+
+      const agentCardData = await response.json()
+      
+      const agentCard: AgentCard = {
+        alias: agentCardData.name || "Unknown Agent",
+        engagementContextRole: agentCardData.extensions?.gleifIdentity?.engagementRole || "Unknown Role",
+        agentType: "AI",
+        verified: true, // Own agent is trusted
+        timestamp: new Date().toLocaleTimeString(),
+        name: agentCardData.name,
+        agentAID: agentCardData.extensions?.keriIdentifiers?.agentAID,
+        oorRole: agentCardData.extensions?.gleifIdentity?.officialRole
+      }
+
+      console.log(`✅ Own agent card fetched (no verification needed):`, {
+        name: agentCard.name,
+        agentAID: agentCard.agentAID,
+        oorRole: agentCard.oorRole
+      })
+
+      return { success: true, agentCard }
+
+    } catch (error: any) {
+      console.error(`❌ Error fetching own agent card:`, error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  // ============================================
+  // FETCH AND VERIFY COUNTERPARTY AGENT (DEEP-EXT)
+  // Used for cross-org verification - fetching other party's agent card
+  // ============================================
+  const fetchAndVerifyCounterpartyAgent = async (
+    counterpartyType: 'buyer' | 'seller',
+    counterpartyAgentUrl: string
+  ): Promise<{ success: boolean; agentCard?: AgentCard; error?: string }> => {
+    try {
+      console.log(`🔄 Fetching ${counterpartyType} agent card from: ${counterpartyAgentUrl}`)
+      
+      const response = await fetch(counterpartyAgentUrl)
       if (!response.ok) {
         throw new Error(`Failed to fetch agent card: ${response.status}`)
       }
@@ -423,24 +466,26 @@ export default function AgenticFlow() {
         oorRole: agentCardData.extensions?.gleifIdentity?.officialRole
       }
 
-      console.log(`✅ Agent card fetched:`, {
+      console.log(`✅ ${counterpartyType} agent card fetched:`, {
         name: agentCard.name,
         agentAID: agentCard.agentAID,
         oorRole: agentCard.oorRole
       })
 
       if (USE_MOCK_VERIFICATION) {
-        console.log(`🔐 [MOCK] Verifying ${agentType}...`)
+        console.log(`🔐 [MOCK] Verifying ${counterpartyType}...`)
         await new Promise(resolve => setTimeout(resolve, 1000))
         agentCard.verified = true
         return { success: true, agentCard }
       }
 
-      const verifyEndpoint = agentType === 'buyer' 
-        ? `${API_BASE_URL}/api/verify/buyer`
-        : `${API_BASE_URL}/api/verify/seller`
+      // DEEP-EXT: Use external verification endpoints for cross-org A2A
+      // Verify the COUNTERPARTY (the other party's agent)
+      const verifyEndpoint = counterpartyType === 'buyer' 
+        ? `${API_BASE_URL}/api/verify/ext/buyer`
+        : `${API_BASE_URL}/api/verify/ext/seller`
 
-      console.log(`🔐 Calling verification: ${verifyEndpoint}`)
+      console.log(`🔐 Calling DEEP-EXT verification for ${counterpartyType}: ${verifyEndpoint}`)
       
       const verifyResponse = await fetch(verifyEndpoint, {
         method: 'POST',
@@ -454,35 +499,37 @@ export default function AgenticFlow() {
 
       const verifyResult = await verifyResponse.json()
       
-      if (verifyResult.success && verifyResult.verified) {
-        console.log(`✅ ${agentType} verification passed`)
+      if (verifyResult.success) {
+        console.log(`✅ ${counterpartyType} DEEP-EXT verification passed`)
         agentCard.verified = true
         return { success: true, agentCard }
       } else {
-        console.log(`❌ ${agentType} verification failed:`, verifyResult.error)
+        console.log(`❌ ${counterpartyType} DEEP-EXT verification failed:`, verifyResult.error)
         return { success: false, error: verifyResult.error || 'Verification failed' }
       }
 
     } catch (error: any) {
-      console.error(`❌ Error fetching/verifying ${agentType}:`, error)
+      console.error(`❌ Error fetching/verifying ${counterpartyType}:`, error)
       return { success: false, error: error.message }
     }
   }
 
   // ============================================
   // MESSAGE VERIFICATION ON RECEIPT
+  // Verifies the SENDER (counterparty) using DEEP-EXT
   // ============================================
   const verifyReceivedMessage = async (
     senderType: 'buyer' | 'seller',
     messageId: string
   ): Promise<boolean> => {
-    console.log(`\n📨 Message received from ${senderType}. Starting verification...`)
+    console.log(`\n📨 Message received from ${senderType}. Starting DEEP-EXT verification...`)
     
-    const agentUrl = senderType === 'buyer'
+    // Fetch the SENDER's agent card and verify via DEEP-EXT
+    const senderAgentUrl = senderType === 'buyer'
       ? 'http://localhost:9090/.well-known/agent-card.json'
       : 'http://localhost:8080/.well-known/agent-card.json'
 
-    const result = await fetchAndVerifyAgent(senderType, agentUrl)
+    const result = await fetchAndVerifyCounterpartyAgent(senderType, senderAgentUrl)
 
     if (result.success && result.agentCard?.verified) {
       console.log(`✅ Message ${messageId} verified from ${senderType}`)
@@ -632,27 +679,31 @@ export default function AgenticFlow() {
     }])
   }
 
+  // Buyer fetches OWN agent - NO verification needed
   const fetchBuyerAgent = async () => {
     setAgenticStep('fetching-buyer-agent')
-    addMessage("🔄 Fetching buyer agent...", 'agent')
+    addMessage("🔄 Fetching my agent...", 'agent')
 
-    const result = await fetchAndVerifyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    // Use fetchAgentCardOnly - no DEEP-EXT verification for own agent
+    const result = await fetchAgentCardOnly('http://localhost:9090/.well-known/agent-card.json')
     
     if (result.success && result.agentCard) {
       setBuyerAgentData(result.agentCard)
       setAgenticStep('buyer-agent-fetched')
-      addMessage("✅ Buyer agent fetched successfully!", 'agent')
+      addMessage("✅ My agent fetched successfully!", 'agent')
     } else {
-      addMessage(`❌ Failed to fetch buyer agent: ${result.error}`, 'agent')
+      addMessage(`❌ Failed to fetch my agent: ${result.error}`, 'agent')
       setAgenticStep('idle')
     }
   }
 
+  // Buyer fetches SELLER agent - DEEP-EXT verification required
   const fetchSellerAgent = async () => {
     setAgenticStep('fetching-seller-agent')
     addMessage("🔄 Fetching seller agent...", 'agent')
 
-    const result = await fetchAndVerifyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
+    const result = await fetchAndVerifyCounterpartyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
     
     if (result.success && result.agentCard) {
       setSellerAgentFromBuyerData(result.agentCard)
@@ -664,11 +715,13 @@ export default function AgenticFlow() {
     }
   }
 
+  // Verify seller agent - DEEP-EXT verification
   const verifySellerAgent = async () => {
     setAgenticStep('verifying-seller-agent')
-    addMessage("🔐 Verifying seller agent...", 'agent')
+    addMessage("🔐 Verifying seller agent via DEEP-EXT...", 'agent')
 
-    const result = await fetchAndVerifyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
+    const result = await fetchAndVerifyCounterpartyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
     
     if (result.success && result.agentCard?.verified) {
       setSellerAgentVerified(true)
@@ -691,11 +744,13 @@ export default function AgenticFlow() {
     }])
   }
 
+  // Seller fetches OWN agent - NO verification needed
   const fetchSellerAgentChat = async () => {
     setSellerAgenticStep('fetching-seller-agent')
     addSellerMessage("🔄 Fetching my agent...", 'agent')
 
-    const result = await fetchAndVerifyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    // Use fetchAgentCardOnly - no DEEP-EXT verification for own agent
+    const result = await fetchAgentCardOnly('http://localhost:8080/.well-known/agent-card.json')
     
     if (result.success && result.agentCard) {
       setSellerAgentData(result.agentCard)
@@ -707,11 +762,13 @@ export default function AgenticFlow() {
     }
   }
 
+  // Seller fetches BUYER agent - DEEP-EXT verification required
   const fetchBuyerAgentChat = async () => {
     setSellerAgenticStep('fetching-buyer-agent')
     addSellerMessage("🔄 Fetching buyer agent...", 'agent')
 
-    const result = await fetchAndVerifyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
+    const result = await fetchAndVerifyCounterpartyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
     
     if (result.success && result.agentCard) {
       setBuyerAgentFromSellerData(result.agentCard)
@@ -723,11 +780,13 @@ export default function AgenticFlow() {
     }
   }
 
+  // Verify buyer agent - DEEP-EXT verification
   const verifyBuyerAgentFromSeller = async () => {
     setSellerAgenticStep('verifying-buyer-agent')
-    addSellerMessage("🔐 Verifying buyer agent...", 'agent')
+    addSellerMessage("🔐 Verifying buyer agent via DEEP-EXT...", 'agent')
 
-    const result = await fetchAndVerifyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
+    const result = await fetchAndVerifyCounterpartyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
     
     if (result.success && result.agentCard?.verified) {
       setBuyerAgentVerified(true)

@@ -286,7 +286,7 @@ export default function VerificationFlow() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/verify/seller`, {
+      const response = await fetch(`${API_BASE_URL}/api/verify/ext/seller`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
@@ -395,21 +395,52 @@ export default function VerificationFlow() {
     }
   }
 
-  // Fetch buyer agent (seller side)
+  // Fetch buyer agent (seller side) - REAL API CALL
   const fetchBuyerAgentChat = async () => {
     setSellerAgenticStep('fetching-buyer-agent')
     addSellerMessage("🔄 Fetching buyer agent...", 'agent')
 
-    setTimeout(() => {
+    try {
+      console.log('🚀 [SELLER API CALL] Fetching buyer from: http://localhost:9090/.well-known/agent-card.json')
+      
+      // Make real API call to the buyer A2A server
+      const response = await fetch('http://localhost:9090/.well-known/agent-card.json')
+      
+      console.log('📥 [SELLER API RESPONSE] Status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agent card: ${response.status}`)
+      }
+
+      const agentCardData = await response.json()
+      
+      console.log('✅ [SELLER API DATA] Received buyer agent:', {
+        name: agentCardData.name,
+        agentAID: agentCardData.extensions?.keriIdentifiers?.agentAID,
+        oorRole: agentCardData.extensions?.gleifIdentity?.officialRole
+      })
+      
+      // Extract the three fields from the API response
       const agentCard: AgentCard = {
-        ...AGENT_CARDS.tommyBuyerAgent,
+        alias: agentCardData.name || "Unknown Agent",
+        engagementContextRole: agentCardData.extensions?.gleifIdentity?.engagementRole || "Unknown Role",
+        agentType: "AI",
         verified: true,
         timestamp: new Date().toLocaleTimeString(),
+        // Real API fields
+        name: agentCardData.name,
+        agentAID: agentCardData.extensions?.keriIdentifiers?.agentAID,
+        oorRole: agentCardData.extensions?.gleifIdentity?.officialRole
       }
+      
       setBuyerAgentFromSellerData(agentCard)
       setSellerAgenticStep('buyer-agent-fetched')
-      addSellerMessage("✅ Buyer agent fetched!", 'agent')
-    }, 2000)
+      addSellerMessage("✅ Buyer agent fetched from A2A server!", 'agent')
+    } catch (error: any) {
+      console.error('❌ [SELLER API ERROR]:', error)
+      addSellerMessage(`❌ Failed to fetch buyer agent: ${error.message}`, 'agent')
+      setSellerAgenticStep('seller-agent-fetched') // Go back to previous state
+    }
   }
 
   // Verify buyer agent (seller side - automatic)
@@ -427,7 +458,7 @@ export default function VerificationFlow() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/verify/buyer`, {
+      const response = await fetch(`${API_BASE_URL}/api/verify/ext/buyer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
