@@ -540,10 +540,10 @@ export default function VerificationFlow() {
         {/* Header */}
         <div className="text-center mb-8 lg:mb-12">
           <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            LEGENT – vLEI Verified AI Agents
+            <span style={{letterSpacing: '0.3em'}}>T I T A N</span> - vLEI Legent Verified AI Agents
           </h1>
           <p className="text-slate-600 text-sm lg:text-base font-medium">
-            Powered by vLEI Infrastructure on GoogleA2A
+            Complete Business Transaction Flow with Algorand Atomic Payments
           </p>
         </div>
 

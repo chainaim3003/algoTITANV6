@@ -15,7 +15,7 @@ export default function Navigation() {
           {/* Title + Navigation + Wallet */}
           <div className="flex items-center gap-4">
             {/* Left: Title */}
-            <Link href="/" className="text-2xl font-bold text-gray-900 whitespace-nowrap">
+            <Link href="/" className="text-3xl font-bold text-gray-900 whitespace-nowrap">
               Algo TITAN
             </Link>
 
@@ -25,7 +25,7 @@ export default function Navigation() {
                 {/* 1. Home */}
                 <Link
                   href="/"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/')
                       ? 'bg-blue-100 text-blue-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -37,7 +37,7 @@ export default function Navigation() {
                 {/* 2. NewMarket */}
                 <Link
                   href="/newmarket"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/newmarket')
                       ? 'bg-purple-100 text-purple-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -49,7 +49,7 @@ export default function Navigation() {
                 {/* 3. AgentExchange */}
                 <Link
                   href="/agentexchange"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/agentexchange')
                       ? 'bg-indigo-100 text-indigo-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -61,7 +61,7 @@ export default function Navigation() {
                 {/* 4. AgenticFlow */}
                 <Link
                   href="/agenticflow"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/agenticflow')
                       ? 'bg-indigo-100 text-indigo-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -70,34 +70,10 @@ export default function Navigation() {
                   🔄 AgenticFlow
                 </Link>
 
-                {/* 5. NewEscrow */}
-                <Link
-                  href="/escrow-marketplace"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                    isActive('/escrow-marketplace')
-                      ? 'bg-teal-100 text-teal-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  💰 NewEscrow
-                </Link>
-
-                {/* 5b. OldEscrow */}
-                <Link
-                  href="/oldescrow"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                    isActive('/oldescrow')
-                      ? 'bg-teal-100 text-teal-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  🏦 OldEscrow
-                </Link>
-
-                {/* 6. Exporter */}
+                {/* 5. Exporter */}
                 <Link
                   href="/exporter"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/exporter')
                       ? 'bg-blue-100 text-blue-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -106,10 +82,10 @@ export default function Navigation() {
                   📦 Exporter
                 </Link>
 
-                {/* 7. Importer */}
+                {/* 6. Importer */}
                 <Link
                   href="/importer"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/importer')
                       ? 'bg-green-100 text-green-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -118,10 +94,10 @@ export default function Navigation() {
                   🏪 Importer
                 </Link>
 
-                {/* 8. Financier */}
+                {/* 7. Financier */}
                 <Link
                   href="/financier"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/financier')
                       ? 'bg-yellow-100 text-yellow-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -130,10 +106,10 @@ export default function Navigation() {
                   💰 Financier
                 </Link>
 
-                {/* 9. Regulator */}
+                {/* 8. Regulator */}
                 <Link
                   href="/regulator"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-md text-[15px] font-medium transition-colors whitespace-nowrap ${
                     isActive('/regulator')
                       ? 'bg-red-100 text-red-700'
                       : 'text-gray-500 hover:text-gray-700'
@@ -146,11 +122,7 @@ export default function Navigation() {
               </div>
             </div>
 
-            {/* Right: Agentic System Status */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-sm font-medium text-green-700">Agentic</span>
-            </div>
+
           </div>
         </div>
       </div>

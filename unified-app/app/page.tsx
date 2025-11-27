@@ -27,19 +27,24 @@ export default function HomePage() {
                 <li className="flex items-start gap-3">
                   <span className="text-green-500 text-xl">✅</span>
                   <span>
-                    Stop waiting weeks for payments - transform invoices, bills of lading, and trade documents into
-                    instant liquidity
+                    Enter the world of Agentic Commerce and Stablecoins.
                   </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-green-500 text-xl">✅</span>
+                  <span>
+                    Stop waiting weeks for payments - transform your Invoices, A R, Bills of Lading and other trade instruments to instant liquidity
+                  </span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-green-500 text-xl">✅</span>
+                  <span>Get paid faster with automated smart contracts and compliance built for enterprises and small businesses</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="text-green-500 text-xl">✅</span>
                   <span>
                     Access global markets and earn better yields on cash through regulated blockchain technology
                   </span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-green-500 text-xl">✅</span>
-                  <span>Get paid faster with automated smart contracts and compliance built for small businesses</span>
                 </li>
               </ul>
             </div>
@@ -69,7 +74,7 @@ export default function HomePage() {
       </section>
 
       {/* Trade News Section with RSS Feeds */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-12 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-2xl text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Current on Global Trade</h2>

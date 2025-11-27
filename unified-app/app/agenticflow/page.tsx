@@ -972,8 +972,10 @@ export default function AgenticFlow() {
       addMessage("✅ Payment completed successfully!", 'agent')
       addMessage(`Transaction: ${paymentData.transactionHash}`, 'agent')
       
+      // Notify seller with payment details and link
       addSellerMessage(`💰 Payment received: ${paymentAmount} ALGO`, 'agent')
       addSellerMessage(`✅ PO payment confirmed!`, 'agent')
+      addSellerMessage(`🔗 View transaction: ${paymentData.peraExplorerLink}`, 'agent')
       
       setIsPaymentProcessing(false)
 
@@ -1070,6 +1072,7 @@ export default function AgenticFlow() {
       
       addSellerMessage(`💰 Invoice payment received: ${invoice.totalAmount.toFixed(2)} ALGO`, 'agent')
       addSellerMessage(`✅ Payment confirmed! Preparing shipment...`, 'agent')
+      addSellerMessage(`🔗 View transaction: ${paymentData.peraExplorerLink}`, 'agent')
       
       setIsPaymentProcessing(false)
       setPendingInvoice(null)
@@ -1170,6 +1173,7 @@ export default function AgenticFlow() {
       
       addSellerMessage(`💰 Receipt payment received: ${receiptAmount} ALGO`, 'agent')
       addSellerMessage(`✅ All payments confirmed!`, 'agent')
+      addSellerMessage(`🔗 View transaction: ${paymentData.peraExplorerLink}`, 'agent')
       addSellerMessage("🎉 Order complete! Ready for dispatch.", 'agent')
       
       setIsPaymentProcessing(false)
@@ -1312,7 +1316,7 @@ export default function AgenticFlow() {
 
             {agenticStep === 'business-ready' && (
               <div className="flex-1 bg-gradient-to-br from-slate-50 to-blue-50 p-6 lg:p-8 border-b border-slate-300 overflow-y-auto">
-                <div className="space-y-4">
+                <div className="space-y-4 overflow-y-auto max-h-[600px] pr-2">
                   <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-4">
                     <MessageSquare className="w-5 h-5 text-blue-600" />
                     Business Messages
@@ -1499,7 +1503,7 @@ export default function AgenticFlow() {
             )}
 
             <div className="bg-slate-50 border-t border-slate-300">
-              <div className="h-48 overflow-y-auto p-4 space-y-2">
+              <div className="h-48 overflow-y-auto p-4 space-y-2" style={{scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #f1f5f9'}}>
                 {chatMessages.length === 0 && (
                   <div className="text-center text-sm text-slate-500 py-8">
                     <p>Type a command to start:</p>
@@ -1508,22 +1512,43 @@ export default function AgenticFlow() {
                     <p className="text-xs">• send po</p>
                   </div>
                 )}
-                {chatMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
+                {chatMessages.map((msg) => {
+                  // Check if message contains a URL
+                  const urlRegex = /(https?:\/\/[^\s]+)/g
+                  const parts = msg.text.split(urlRegex)
+                  
+                  return (
                     <div
-                      className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
-                        msg.type === 'user'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white border border-slate-200 text-slate-800'
-                      }`}
+                      key={msg.id}
+                      className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                      {msg.text}
+                      <div
+                        className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                          msg.type === 'user'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white border border-slate-200 text-slate-800'
+                        }`}
+                      >
+                        {parts.map((part, index) => {
+                          if (part.match(urlRegex)) {
+                            return (
+                              <a
+                                key={index}
+                                href={part}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 underline break-all"
+                              >
+                                {part}
+                              </a>
+                            )
+                          }
+                          return <span key={index}>{part}</span>
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
                 <div ref={chatEndRef} />
               </div>
 
@@ -1567,7 +1592,7 @@ export default function AgenticFlow() {
               Transaction Progress
             </h3>
 
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto max-h-[500px] pr-2" style={{scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #f1f5f9'}}>
               <div className={`p-4 rounded-lg border-2 ${buyerAgentData ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200'}`}>
                 <p className="text-sm font-semibold">1. Agents Verified</p>
                 {buyerAgentData && sellerAgentVerified && <Check className="w-5 h-5 text-blue-600 mt-2" />}
@@ -1711,7 +1736,7 @@ export default function AgenticFlow() {
             )}
 
             <div className="bg-slate-50 border-t border-slate-300">
-              <div className="h-48 overflow-y-auto p-4 space-y-2">
+              <div className="h-48 overflow-y-auto p-4 space-y-2" style={{scrollbarWidth: 'thin', scrollbarColor: '#94a3b8 #f1f5f9'}}>
                 {sellerChatMessages.length === 0 && (
                   <div className="text-center text-sm text-slate-500 py-8">
                     <p>Type a command to start:</p>
@@ -1719,22 +1744,43 @@ export default function AgenticFlow() {
                     <p className="text-xs">• fetch buyer agent</p>
                   </div>
                 )}
-                {sellerChatMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
+                {sellerChatMessages.map((msg) => {
+                  // Check if message contains a URL
+                  const urlRegex = /(https?:\/\/[^\s]+)/g
+                  const parts = msg.text.split(urlRegex)
+                  
+                  return (
                     <div
-                      className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
-                        msg.type === 'user'
-                          ? 'bg-green-600 text-white'
-                          : 'bg-white border border-slate-200 text-slate-800'
-                      }`}
+                      key={msg.id}
+                      className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                      {msg.text}
+                      <div
+                        className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                          msg.type === 'user'
+                            ? 'bg-green-600 text-white'
+                            : 'bg-white border border-slate-200 text-slate-800'
+                        }`}
+                      >
+                        {parts.map((part, index) => {
+                          if (part.match(urlRegex)) {
+                            return (
+                              <a
+                                key={index}
+                                href={part}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 underline break-all"
+                              >
+                                {part}
+                              </a>
+                            )
+                          }
+                          return <span key={index}>{part}</span>
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
                 <div ref={chatEndRefSeller} />
               </div>
 
