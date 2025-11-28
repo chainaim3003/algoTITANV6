@@ -24,52 +24,13 @@ import {
   ArrowRight,
   ArrowDown,
   Bot,
-  FileText,
 } from "lucide-react"
-import { InvoiceAgenticFlow } from "./components/InvoiceAgenticFlow"
 
 // ============================================
 // VERIFICATION MODE CONFIGURATION
 // ============================================
 const USE_MOCK_VERIFICATION = false  // Set to true for UI testing without backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
-// ============================================
-// ALGORAND PAYMENT CONFIGURATION
-// ============================================
-// Get marketplace fee from environment (percentage like 0.25) and convert to decimal (0.0025)
-const MARKETPLACE_FEE = parseFloat(process.env.NEXT_PUBLIC_MARKETPLACE_FEE || '0.25')
-const PLATFORM_FEE_PERCENTAGE = MARKETPLACE_FEE / 100 // Convert 0.25% to 0.0025
-
-// Algorand Network Configuration
-const ALGORAND_NETWORK = process.env.NEXT_PUBLIC_ALGORAND_NETWORK || 'testnet'
-const ALGORAND_API_URL = process.env.NEXT_PUBLIC_ALGORAND_API_URL || 'https://testnet-api.algonode.cloud'
-
-// Payment Configuration
-const PAYMENT_CURRENCY = process.env.NEXT_PUBLIC_PAYMENT_CURRENCY || 'ALGO'
-
-// Get wallet addresses from environment
-const BUYER_WALLET = process.env.NEXT_PUBLIC_BUYER_WALLET || ''
-const SELLER_WALLET = process.env.NEXT_PUBLIC_SELLER_WALLET || ''
-const MARKETPLACE_WALLET = process.env.NEXT_PUBLIC_MARKETPLACE_WALLET || ''
-
-// Get secret keys from environment (for transaction signing)
-const BUYER_SECRET_KEY = process.env.NEXT_PUBLIC_BUYER_SECRET_KEY || ''
-
-// Invoice payment amount (in ALGO)
-const INVOICE_PAYMENT_AMOUNT = 0.5 // 0.5 ALGO for demo
-
-// Payment data interface
-interface PaymentData {
-  amount: number
-  platformFee: number
-  totalPaid: number
-  currency: string
-  transactionHash: string
-  peraExplorerLink: string
-  status: 'pending' | 'completed' | 'failed'
-  paymentType: 'invoice'
-}
 
 // Unique ID generator to prevent duplicate keys
 let messageIdCounter = 0
@@ -114,9 +75,6 @@ type SellerAgenticStep =
   | 'verifying-buyer-agent'
   | 'buyer-agent-verified'
 
-// Seller flow mode type
-type SellerFlowMode = 'none' | 'verification' | 'invoice'
-
 const AGENT_CARDS = {
   tommyBuyerAgent: {
     alias: "tommy buyer agent",
@@ -141,124 +99,6 @@ const LEI_DATA = {
     lei: "3358004DXAMRWRUIYJ05",
     address: "5/22, Textile Park, Tiruppur, Tamil Nadu, India",
   },
-}
-
-// ============================================
-// REAL ATOMIC PAYMENT FUNCTION WITH MARKETPLACE FEE
-// ============================================
-const executeAtomicPayment = async (
-  amount: number,
-  paymentType: 'invoice' = 'invoice'
-): Promise<PaymentData> => {
-  const platformFee = amount * PLATFORM_FEE_PERCENTAGE
-  const totalPaid = amount + platformFee
-
-  console.log(`💰 Executing Algorand atomic payment:`)
-  console.log(`   Amount to seller: ${amount} ALGO`)
-  console.log(`   Marketplace fee (${MARKETPLACE_FEE}%): ${platformFee.toFixed(4)} ALGO`)
-  console.log(`   Total: ${totalPaid.toFixed(4)} ALGO`)
-
-  try {
-    // Check if buyer secret key is available
-    if (!BUYER_SECRET_KEY) {
-      throw new Error('Buyer secret key not configured. Please set NEXT_PUBLIC_BUYER_SECRET_KEY in environment.')
-    }
-
-    // Check if wallet addresses are configured
-    if (!BUYER_WALLET || !SELLER_WALLET || !MARKETPLACE_WALLET) {
-      throw new Error('Wallet addresses not configured. Please set wallet addresses in environment.')
-    }
-
-    // Import algosdk
-    const algosdk = await import('algosdk')
-    
-    // Algorand Network configuration
-    const algodToken = ''
-    const algodServer = ALGORAND_API_URL
-    const algodPort = 443
-    const algodClient = new algosdk.Algodv2(algodToken, algodServer, algodPort)
-    
-    console.log(`🌐 Network: ${ALGORAND_NETWORK}`)
-    console.log(`🔗 API Endpoint: ${algodServer}`)
-    console.log(`💵 Payment Currency: ${PAYMENT_CURRENCY}`)
-
-    // Get suggested parameters from the network
-    const suggestedParams = await algodClient.getTransactionParams().do()
-
-    // Convert ALGO to microAlgos (1 ALGO = 1,000,000 microAlgos)
-    const amountMicroAlgos = Math.round(amount * 1_000_000)
-    const feeMicroAlgos = Math.round(platformFee * 1_000_000)
-
-    console.log(`📝 Creating atomic transaction group:`)
-    console.log(`   Transaction 1: ${amountMicroAlgos} microAlgos (${amount} ALGO) → Seller`)
-    console.log(`   Transaction 2: ${feeMicroAlgos} microAlgos (${platformFee.toFixed(4)} ALGO) → Marketplace`)
-
-    // Create transaction 1: Buyer → Seller (main payment)
-    const txn1 = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-      sender: BUYER_WALLET,
-      receiver: SELLER_WALLET,
-      amount: amountMicroAlgos,
-      suggestedParams,
-      note: new Uint8Array(new TextEncoder().encode(`Payment: ${paymentType}`)),
-    })
-
-    // Create transaction 2: Buyer → Marketplace (fee)
-    const txn2 = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-      sender: BUYER_WALLET,
-      receiver: MARKETPLACE_WALLET,
-      amount: feeMicroAlgos,
-      suggestedParams,
-      note: new Uint8Array(new TextEncoder().encode(`Marketplace fee: ${paymentType}`)),
-    })
-
-    // Group the transactions atomically
-    const txnGroup = [txn1, txn2]
-    algosdk.assignGroupID(txnGroup)
-    
-    console.log(`✅ Atomic group created`)
-    console.log(`🔐 Signing transactions with buyer's key...`)
-
-    // Decode the buyer's secret key
-    const buyerAccount = algosdk.mnemonicToSecretKey(BUYER_SECRET_KEY)
-    
-    // Sign both transactions
-    const signedTxn1 = txn1.signTxn(buyerAccount.sk)
-    const signedTxn2 = txn2.signTxn(buyerAccount.sk)
-
-    console.log(`✅ Transactions signed`)
-    console.log(`📤 Submitting atomic group to Algorand TestNet...`)
-
-    // Submit the grouped transactions
-    const response = await algodClient.sendRawTransaction([signedTxn1, signedTxn2]).do()
-    
-    // In algosdk v3, the field is 'txid' (lowercase)
-    const txId = response.txid
-
-    console.log(`✅ Transaction submitted!`)
-    console.log(`   TX ID: ${txId}`)
-    console.log(`⏳ Waiting for confirmation...`)
-
-    // Wait for confirmation
-    const confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 4)
-
-    console.log(`✅ Transaction confirmed in round ${confirmedTxn['confirmed-round']}`)
-    console.log(`🔗 View on Pera Explorer: https://testnet.explorer.perawallet.app/tx/${txId}`)
-
-    return {
-      amount,
-      platformFee,
-      totalPaid,
-      currency: 'ALGO',
-      transactionHash: txId,
-      peraExplorerLink: `https://testnet.explorer.perawallet.app/tx/${txId}`,
-      status: 'completed',
-      paymentType,
-    }
-
-  } catch (error: any) {
-    console.error('💥 Payment error:', error)
-    throw new Error(`Payment failed: ${error.message}`)
-  }
 }
 
 export default function VerificationFlow() {
@@ -297,29 +137,15 @@ export default function VerificationFlow() {
   const [buyerAgentVerifying, setBuyerAgentVerifying] = useState(false)
   const [buyerAgentVerified, setBuyerAgentVerified] = useState(false)
 
-  // ============================================
-  // SELLER INVOICE FLOW STATES (NEW)
-  // ============================================
-  const [sellerFlowMode, setSellerFlowMode] = useState<SellerFlowMode>('none')
-  const [invoiceFlowStep, setInvoiceFlowStep] = useState<string>('idle')
-  const [invoiceFlowData, setInvoiceFlowData] = useState<{
-    invoiceId?: string
-    amount?: string
-    transactionId?: string
-    blockExplorerUrl?: string
-  }>({})
-
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [chatMessages])
 
-  // Auto-scroll seller chat - BUT NOT during invoice flow
+  // Auto-scroll seller chat
   useEffect(() => {
-    if (sellerFlowMode !== 'invoice') {
-      chatEndRefSeller.current?.scrollIntoView({ behavior: "smooth" })
-    }
-  }, [sellerChatMessages, sellerFlowMode])
+    chatEndRefSeller.current?.scrollIntoView({ behavior: "smooth" })
+  }, [sellerChatMessages])
 
   // Auto-verify after seller agent is fetched (buyer side)
   useEffect(() => {
@@ -328,18 +154,16 @@ export default function VerificationFlow() {
         verifySellerAgent()
       }, 1000)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agenticStep, sellerAgentFromBuyerData, sellerAgentVerified])
+  }, [agenticStep, sellerAgentFromBuyerData])
 
   // Auto-verify after buyer agent is fetched (seller side)
   useEffect(() => {
-    if (sellerAgenticStep === 'buyer-agent-fetched' && buyerAgentFromSellerData && !buyerAgentVerified) {
+    if (sellerAgenticStep === 'buyer-agent-fetched' && buyerAgentFromSellerData && sellerAgenticStep !== 'buyer-agent-verified') {
       setTimeout(() => {
         verifyBuyerAgentFromSeller()
       }, 1000)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sellerAgenticStep, buyerAgentFromSellerData, buyerAgentVerified])
+  }, [sellerAgenticStep, buyerAgentFromSellerData])
 
   const addMessage = (text: string, type: 'user' | 'agent') => {
     const newMessage: ChatMessage = {
@@ -462,7 +286,6 @@ export default function VerificationFlow() {
     }
 
     try {
-      // DEEP-EXT: Use external verification for cross-org A2A
       const response = await fetch(`${API_BASE_URL}/api/verify/ext/seller`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -526,7 +349,6 @@ export default function VerificationFlow() {
 
   // Fetch seller agent (seller side)
   const fetchSellerAgentChat = async () => {
-    setSellerFlowMode('verification')
     setSellerAgenticStep('fetching-seller-agent')
     addSellerMessage("🔄 Fetching my agent...", 'agent')
 
@@ -573,7 +395,7 @@ export default function VerificationFlow() {
     }
   }
 
-  // Fetch buyer agent (seller side) - REAL API CALL with cross-org verification
+  // Fetch buyer agent (seller side) - REAL API CALL
   const fetchBuyerAgentChat = async () => {
     setSellerAgenticStep('fetching-buyer-agent')
     addSellerMessage("🔄 Fetching buyer agent...", 'agent')
@@ -636,7 +458,6 @@ export default function VerificationFlow() {
     }
 
     try {
-      // DEEP-EXT: Use external verification for cross-org A2A
       const response = await fetch(`${API_BASE_URL}/api/verify/ext/buyer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -656,138 +477,6 @@ export default function VerificationFlow() {
     }
   }
 
-  // ============================================
-  // SELLER INVOICE FLOW FUNCTION - WITH CROSS-VERIFICATION
-  // ============================================
-  const startInvoiceFlow = async () => {
-    setSellerFlowMode('invoice')
-    setInvoiceFlowStep('idle')
-    addSellerMessage("📄 Starting invoice generation process...", 'agent')
-
-    // Step 1: Create Invoice
-    await new Promise(resolve => setTimeout(resolve, 500))
-    setInvoiceFlowStep('creating-invoice')
-    addSellerMessage("📝 Creating invoice...", 'agent')
-
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    const invoiceId = 'INV-' + Math.random().toString(36).substring(2, 10).toUpperCase()
-    setInvoiceFlowData({ invoiceId })
-    setInvoiceFlowStep('invoice-created')
-    addSellerMessage(`✅ Invoice ${invoiceId} created!`, 'agent')
-
-    // Step 2: Send to Buyer
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setInvoiceFlowStep('sending-to-buyer')
-    addSellerMessage("📤 Sending invoice to buyer agent via A2A...", 'agent')
-
-    // Step 3: Fetch Buyer Agent Card (REAL API CALL)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setInvoiceFlowStep('buyer-verifying')
-    addSellerMessage("🔍 Fetching buyer agent card for verification...", 'agent')
-
-    try {
-      console.log('🚀 [INVOICE FLOW] Fetching buyer agent from: http://localhost:9090/.well-known/agent-card.json')
-      
-      const response = await fetch('http://localhost:9090/.well-known/agent-card.json')
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch buyer agent card: ${response.status}`)
-      }
-
-      const agentCardData = await response.json()
-      
-      console.log('✅ [INVOICE FLOW] Buyer agent card fetched:', {
-        name: agentCardData.name,
-        agentAID: agentCardData.extensions?.keriIdentifiers?.agentAID,
-        oorRole: agentCardData.extensions?.gleifIdentity?.officialRole
-      })
-
-      // Store buyer agent data
-      const buyerCard: AgentCard = {
-        alias: agentCardData.name || "Unknown Agent",
-        engagementContextRole: agentCardData.extensions?.gleifIdentity?.engagementRole || "Unknown Role",
-        agentType: "AI",
-        verified: false,
-        timestamp: new Date().toLocaleTimeString(),
-        name: agentCardData.name,
-        agentAID: agentCardData.extensions?.keriIdentifiers?.agentAID,
-        oorRole: agentCardData.extensions?.gleifIdentity?.officialRole
-      }
-      setBuyerAgentFromSellerData(buyerCard)
-      addSellerMessage("✅ Buyer agent card fetched!", 'agent')
-
-      // Step 4: DEEP-EXT Verification (REAL API CALL)
-      await new Promise(resolve => setTimeout(resolve, 500))
-      setInvoiceFlowStep('validating-invoice')
-      addSellerMessage("🔐 Verifying buyer via DEEP-EXT cross-org verification...", 'agent')
-
-      if (USE_MOCK_VERIFICATION) {
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        setBuyerAgentVerified(true)
-        addSellerMessage("✅ [MOCK] Buyer agent verified!", 'agent')
-      } else {
-        console.log('🔐 [INVOICE FLOW] Calling DEEP-EXT verification: /api/verify/ext/buyer')
-        
-        const verifyResponse = await fetch(`${API_BASE_URL}/api/verify/ext/buyer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        })
-
-        const verifyResult = await verifyResponse.json()
-
-        if (!verifyResult.success) {
-          throw new Error(verifyResult.error || 'Buyer verification failed')
-        }
-
-        console.log('✅ [INVOICE FLOW] Buyer DEEP-EXT verification passed!')
-        setBuyerAgentVerified(true)
-        addSellerMessage("✅ Buyer agent DEEP-EXT verification passed!", 'agent')
-      }
-
-      // Step 5: Process Payment (only after successful verification)
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setInvoiceFlowStep('payment-processing')
-      setInvoiceFlowData(prev => ({ ...prev, amount: `${INVOICE_PAYMENT_AMOUNT} ALGO` }))
-      addSellerMessage(`💳 Processing ${INVOICE_PAYMENT_AMOUNT} ALGO payment on Algorand blockchain...`, 'agent')
-      addSellerMessage(`   Marketplace fee (${MARKETPLACE_FEE}%): ${(INVOICE_PAYMENT_AMOUNT * PLATFORM_FEE_PERCENTAGE).toFixed(4)} ALGO`, 'agent')
-
-      // Step 6: REAL ALGORAND PAYMENT
-      // Execute real atomic payment on Algorand TestNet
-      console.log('💰 [INVOICE FLOW] Executing real Algorand payment...')
-      
-      try {
-        const paymentData = await executeAtomicPayment(INVOICE_PAYMENT_AMOUNT, 'invoice')
-        
-        console.log('✅ [INVOICE FLOW] Payment completed:', paymentData)
-        
-        setInvoiceFlowData(prev => ({ 
-          ...prev, 
-          transactionId: paymentData.transactionHash,
-          blockExplorerUrl: paymentData.peraExplorerLink
-        }))
-        setInvoiceFlowStep('payment-confirmed')
-        addSellerMessage(`✅ Payment confirmed! Transaction: ${paymentData.transactionHash}`, 'agent')
-        addSellerMessage(`🔗 View on Pera Explorer: ${paymentData.peraExplorerLink}`, 'agent')
-      } catch (paymentError: any) {
-        console.error('❌ [INVOICE FLOW] Payment failed:', paymentError)
-        setInvoiceFlowStep('error')
-        addSellerMessage(`❌ Payment failed: ${paymentError.message}`, 'agent')
-        return // Exit the flow on payment failure
-      }
-
-      // Step 7: Complete
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setInvoiceFlowStep('complete')
-      addSellerMessage("🎉 Invoice flow complete! Payment received and verified.", 'agent')
-
-    } catch (error: any) {
-      console.error('❌ [INVOICE FLOW ERROR]:', error)
-      setInvoiceFlowStep('error')
-      addSellerMessage(`❌ Invoice flow failed: ${error.message}`, 'agent')
-      addSellerMessage("⚠️ Payment NOT processed - verification required first!", 'agent')
-    }
-  }
-
   // Handle seller chat input
   const handleSellerSendMessage = () => {
     if (!sellerInputMessage.trim()) return
@@ -796,10 +485,8 @@ export default function VerificationFlow() {
     addSellerMessage(sellerInputMessage, 'user')
     setSellerInputMessage("")
 
-    // Parse commands - check for send invoice FIRST
-    if (message.includes('send invoice')) {
-      startInvoiceFlow()
-    } else if (message.includes('fetch my agent') || message.includes('fetch seller agent')) {
+    // Parse commands
+    if (message.includes('fetch my agent') || message.includes('fetch seller agent')) {
       fetchSellerAgentChat()
     } else if (message.includes('fetch buyer agent')) {
       if (sellerAgentData) {
@@ -814,7 +501,7 @@ export default function VerificationFlow() {
         addSellerMessage("⚠️ Please fetch the buyer agent first!", 'agent')
       }
     } else {
-      addSellerMessage("I can help you with: 'fetch my agent', 'fetch buyer agent', 'verify buyer agent', 'send invoice'", 'agent')
+      addSellerMessage("I can help you with: 'fetch my agent', 'fetch buyer agent', 'verify buyer agent'", 'agent')
     }
   }
 
@@ -859,8 +546,7 @@ export default function VerificationFlow() {
     }
 
     try {
-      // DEEP-EXT: Use external verification for cross-org A2A
-      const response = await fetch(`${API_BASE_URL}/api/verify/ext/buyer`, {
+      const response = await fetch(`${API_BASE_URL}/api/verify/buyer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
@@ -885,10 +571,10 @@ export default function VerificationFlow() {
         {/* Header */}
         <div className="text-center mb-8 lg:mb-12">
           <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            LEGENT – vLEI Verified AI Agents
+            <span style={{letterSpacing: '0.3em'}}>T I T A N</span> - vLEI Legent Verified AI Agents
           </h1>
           <p className="text-slate-600 text-sm lg:text-base font-medium">
-            Powered by vLEI Infrastructure on GoogleA2A
+            Complete Business Transaction Flow with Algorand Atomic Payments
           </p>
         </div>
 
@@ -1445,258 +1131,235 @@ export default function VerificationFlow() {
               </div>
             </div>
 
-            {/* DYNAMIC MIDDLE SECTION - UPDATED TO HANDLE BOTH FLOWS */}
-            <div className="flex-1 bg-gradient-to-br from-slate-50 to-green-50 p-4 lg:p-6 border-b border-slate-300 overflow-y-auto" style={{ minHeight: '450px' }}>
+            {/* DYNAMIC MIDDLE SECTION */}
+            <div className="flex-1 bg-gradient-to-br from-slate-50 to-green-50 p-6 lg:p-8 border-b border-slate-300 overflow-y-auto">
 
-              {/* STATE 0: No flow active - Initial Empty State */}
-              {sellerFlowMode === 'none' && sellerAgenticStep === 'idle' && (
+              {/* STATE 1: Initial - Empty */}
+              {(sellerAgenticStep === 'idle' || sellerAgenticStep === 'fetching-seller-agent') && (
                 <div className="w-full text-center py-16 text-slate-400">
                   <Bot className="w-20 h-20 mx-auto mb-4 opacity-20" />
                   <p className="text-base font-medium">Ready to begin</p>
-                  <p className="text-sm mt-2">Type "fetch my agent" or "send invoice"</p>
+                  <p className="text-sm mt-2">Type "fetch my agent" to start</p>
                 </div>
               )}
 
-              {/* INVOICE FLOW - Show InvoiceAgenticFlow component */}
-              {sellerFlowMode === 'invoice' && (
-                <InvoiceAgenticFlow 
-                  currentStep={invoiceFlowStep} 
-                  invoiceData={invoiceFlowData}
-                />
+              {/* STATE 2: Seller Agent Details ONLY */}
+              {sellerAgenticStep === 'seller-agent-fetched' && sellerAgentData && (
+                <div className="animate-fade-in">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <User className="w-5 h-5 text-green-600" />
+                    Seller Agent Details
+                  </h3>
+                  <div className="p-6 bg-green-50 border-2 border-green-200 rounded-xl shadow-sm">
+                    <div className="flex items-start justify-between mb-4">
+                      <h4 className="text-base font-bold text-green-900">Agent Card</h4>
+                      <CheckCircle className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div className="space-y-3 text-sm text-slate-700">
+                      <p>
+                        <strong className="font-semibold text-slate-900">Name:</strong>{" "}
+                        <span className="break-words">{sellerAgentData.name || sellerAgentData.alias}</span>
+                      </p>
+                      <p>
+                        <strong className="font-semibold text-slate-900">Agent AID:</strong>{" "}
+                        <span className="break-all text-xs">{sellerAgentData.agentAID || 'N/A'}</span>
+                      </p>
+                      <p>
+                        <strong className="font-semibold text-slate-900">OOR Role:</strong>{" "}
+                        <span className="break-words">{sellerAgentData.oorRole || sellerAgentData.engagementContextRole}</span>
+                      </p>
+                      <p className="text-xs text-slate-500 pt-2 border-t border-green-200">
+                        Fetched at: {sellerAgentData.timestamp}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 text-center text-sm text-slate-500">
+                    Next: Type "fetch buyer agent" to continue
+                  </div>
+                </div>
               )}
 
-              {/* VERIFICATION FLOW - Existing verification flow */}
-              {sellerFlowMode === 'verification' && (
-                <>
-                  {/* STATE 1: Fetching seller agent */}
-                  {sellerAgenticStep === 'fetching-seller-agent' && (
-                    <div className="w-full text-center py-16 text-slate-400">
-                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500 flex items-center justify-center animate-pulse">
-                        <Search className="w-8 h-8 text-white animate-spin" style={{ animationDuration: '2s' }} />
-                      </div>
-                      <p className="text-base font-medium text-green-700">Fetching agent...</p>
-                    </div>
-                  )}
+              {/* STATE 3: Agentic Flow + Two Buttons */}
+              {['fetching-buyer-agent', 'buyer-agent-fetched', 'verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
+                <div className="animate-fade-in space-y-6">
+                  <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-green-600" />
+                    Agentic Verification Flow
+                  </h3>
 
-                  {/* STATE 2: Seller Agent Details ONLY */}
-                  {sellerAgenticStep === 'seller-agent-fetched' && sellerAgentData && (
-                    <div className="animate-fade-in">
-                      <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                        <User className="w-5 h-5 text-green-600" />
-                        Seller Agent Details
-                      </h3>
-                      <div className="p-6 bg-green-50 border-2 border-green-200 rounded-xl shadow-sm">
-                        <div className="flex items-start justify-between mb-4">
-                          <h4 className="text-base font-bold text-green-900">Agent Card</h4>
-                          <CheckCircle className="w-6 h-6 text-green-600" />
-                        </div>
-                        <div className="space-y-3 text-sm text-slate-700">
-                          <p>
-                            <strong className="font-semibold text-slate-900">Name:</strong>{" "}
-                            <span className="break-words">{sellerAgentData.name || sellerAgentData.alias}</span>
-                          </p>
-                          <p>
-                            <strong className="font-semibold text-slate-900">Agent AID:</strong>{" "}
-                            <span className="break-all text-xs">{sellerAgentData.agentAID || 'N/A'}</span>
-                          </p>
-                          <p>
-                            <strong className="font-semibold text-slate-900">OOR Role:</strong>{" "}
-                            <span className="break-words">{sellerAgentData.oorRole || sellerAgentData.engagementContextRole}</span>
-                          </p>
-                          <p className="text-xs text-slate-500 pt-2 border-t border-green-200">
-                            Fetched at: {sellerAgentData.timestamp}
-                          </p>
+                  {/* Horizontal Flow */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* ICON 1: Searching Buyer Agent */}
+                    <>
+                      <div className="animate-fade-in">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className={`w-16 h-16 rounded-xl flex items-center justify-center shadow-lg transition-all ${sellerAgenticStep === 'fetching-buyer-agent'
+                            ? 'bg-green-500 animate-pulse'
+                            : 'bg-green-600'
+                            }`}>
+                            {sellerAgenticStep === 'fetching-buyer-agent' ? (
+                              <Search className="w-8 h-8 text-white animate-spin" style={{ animationDuration: '2s' }} />
+                            ) : (
+                              <UserCheck className="w-8 h-8 text-white" />
+                            )}
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs font-bold text-green-700 whitespace-nowrap">
+                              {sellerAgenticStep === 'fetching-buyer-agent' ? 'Searching...' : 'Found ✓'}
+                            </p>
+                            <p className="text-[10px] text-slate-500">Step 1</p>
+                          </div>
                         </div>
                       </div>
-                      <div className="mt-4 text-center text-sm text-slate-500">
-                        Next: Type "fetch buyer agent" to continue
-                      </div>
-                    </div>
-                  )}
 
-                  {/* STATE 3: Agentic Flow + Two Buttons */}
-                  {['fetching-buyer-agent', 'buyer-agent-fetched', 'verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
-                    <div className="animate-fade-in space-y-6">
-                      <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                        <MessageSquare className="w-5 h-5 text-green-600" />
-                        Agentic Verification Flow
-                      </h3>
+                      {['buyer-agent-fetched', 'verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
+                        <ArrowRight className="w-5 h-5 text-green-500 animate-pulse flex-shrink-0" />
+                      )}
+                    </>
 
-                      {/* Horizontal Flow */}
-                      <div className="flex flex-wrap items-center gap-3">
-                        {/* ICON 1: Searching Buyer Agent */}
-                        <>
-                          <div className="animate-fade-in">
-                            <div className="flex flex-col items-center gap-2">
-                              <div className={`w-16 h-16 rounded-xl flex items-center justify-center shadow-lg transition-all ${sellerAgenticStep === 'fetching-buyer-agent'
-                                ? 'bg-green-500 animate-pulse'
-                                : 'bg-green-600'
-                                }`}>
-                                {sellerAgenticStep === 'fetching-buyer-agent' ? (
-                                  <Search className="w-8 h-8 text-white animate-spin" style={{ animationDuration: '2s' }} />
-                                ) : (
-                                  <UserCheck className="w-8 h-8 text-white" />
-                                )}
-                              </div>
-                              <div className="text-center">
-                                <p className="text-xs font-bold text-green-700 whitespace-nowrap">
-                                  {sellerAgenticStep === 'fetching-buyer-agent' ? 'Searching...' : 'Found ✓'}
-                                </p>
-                                <p className="text-[10px] text-slate-500">Step 1</p>
-                              </div>
+                    {/* ICON 2: Fetched Buyer Agent */}
+                    {['buyer-agent-fetched', 'verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
+                      <>
+                        <div className="animate-fade-in">
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="w-16 h-16 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg relative">
+                              <Bot className="w-8 h-8 text-white" />
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs font-bold text-blue-700 whitespace-nowrap">Fetched ✓</p>
+                              <p className="text-[10px] text-slate-500">Step 2</p>
                             </div>
                           </div>
+                        </div>
 
-                          {['buyer-agent-fetched', 'verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
-                            <ArrowRight className="w-5 h-5 text-green-500 animate-pulse flex-shrink-0" />
-                          )}
-                        </>
-
-                        {/* ICON 2: Fetched Buyer Agent */}
-                        {['buyer-agent-fetched', 'verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
-                          <>
-                            <div className="animate-fade-in">
-                              <div className="flex flex-col items-center gap-2">
-                                <div className="w-16 h-16 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg relative">
-                                  <Bot className="w-8 h-8 text-white" />
-                                </div>
-                                <div className="text-center">
-                                  <p className="text-xs font-bold text-blue-700 whitespace-nowrap">Fetched ✓</p>
-                                  <p className="text-[10px] text-slate-500">Step 2</p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {['verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
-                              <ArrowRight className="w-5 h-5 text-blue-500 animate-pulse flex-shrink-0" />
-                            )}
-                          </>
-                        )}
-
-                        {/* ICON 3: Verifying Buyer Agent */}
                         {['verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
-                          <>
-                            <div className="animate-fade-in">
-                              <div className="flex flex-col items-center gap-2">
-                                <div className={`w-16 h-16 rounded-xl flex items-center justify-center shadow-lg transition-all ${sellerAgenticStep === 'verifying-buyer-agent'
-                                  ? 'bg-orange-500 animate-pulse'
-                                  : 'bg-orange-600'
-                                  }`}>
-                                  {sellerAgenticStep === 'verifying-buyer-agent' ? (
-                                    <ShieldCheck className="w-8 h-8 text-white animate-spin" style={{ animationDuration: '2s' }} />
-                                  ) : (
-                                    <BadgeCheck className="w-8 h-8 text-white" />
-                                  )}
-                                </div>
-                                <div className="text-center">
-                                  <p className="text-xs font-bold text-orange-700 whitespace-nowrap">
-                                    {sellerAgenticStep === 'verifying-buyer-agent' ? 'Verifying...' : 'Checked ✓'}
-                                  </p>
-                                  <p className="text-[10px] text-slate-500">Step 3</p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {sellerAgenticStep === 'buyer-agent-verified' && (
-                              <ArrowRight className="w-5 h-5 text-orange-500 animate-pulse flex-shrink-0" />
-                            )}
-                          </>
+                          <ArrowRight className="w-5 h-5 text-blue-500 animate-pulse flex-shrink-0" />
                         )}
+                      </>
+                    )}
 
-                        {/* ICON 4: Verified Buyer Agent */}
-                        {sellerAgenticStep === 'buyer-agent-verified' && (
-                          <div className="animate-fade-in">
-                            <div className="flex flex-col items-center gap-2">
-                              <div className="w-16 h-16 rounded-xl bg-green-600 flex items-center justify-center shadow-lg animate-bounce" style={{ animationDuration: '2s' }}>
-                                <ShieldCheck className="w-8 h-8 text-white" />
-                              </div>
-                              <div className="text-center">
-                                <p className="text-xs font-bold text-green-700 whitespace-nowrap">Verified! ✅</p>
-                                <p className="text-[10px] text-slate-500">Step 4</p>
-                              </div>
+                    {/* ICON 3: Verifying Buyer Agent */}
+                    {['verifying-buyer-agent', 'buyer-agent-verified'].includes(sellerAgenticStep) && (
+                      <>
+                        <div className="animate-fade-in">
+                          <div className="flex flex-col items-center gap-2">
+                            <div className={`w-16 h-16 rounded-xl flex items-center justify-center shadow-lg transition-all ${sellerAgenticStep === 'verifying-buyer-agent'
+                              ? 'bg-orange-500 animate-pulse'
+                              : 'bg-orange-600'
+                              }`}>
+                              {sellerAgenticStep === 'verifying-buyer-agent' ? (
+                                <ShieldCheck className="w-8 h-8 text-white animate-spin" style={{ animationDuration: '2s' }} />
+                              ) : (
+                                <BadgeCheck className="w-8 h-8 text-white" />
+                              )}
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs font-bold text-orange-700 whitespace-nowrap">
+                                {sellerAgenticStep === 'verifying-buyer-agent' ? 'Verifying...' : 'Checked ✓'}
+                              </p>
+                              <p className="text-[10px] text-slate-500">Step 3</p>
                             </div>
                           </div>
+                        </div>
+
+                        {sellerAgenticStep === 'buyer-agent-verified' && (
+                          <ArrowRight className="w-5 h-5 text-orange-500 animate-pulse flex-shrink-0" />
                         )}
+                      </>
+                    )}
+
+                    {/* ICON 4: Verified Buyer Agent */}
+                    {sellerAgenticStep === 'buyer-agent-verified' && (
+                      <div className="animate-fade-in">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-16 h-16 rounded-xl bg-green-600 flex items-center justify-center shadow-lg animate-bounce" style={{ animationDuration: '2s' }}>
+                            <ShieldCheck className="w-8 h-8 text-white" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs font-bold text-green-700 whitespace-nowrap">Verified! ✅</p>
+                            <p className="text-[10px] text-slate-500">Step 4</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Success Message */}
+                  {sellerAgenticStep === 'buyer-agent-verified' && (
+                    <div className="p-3 bg-green-50 border border-green-300 rounded-lg text-sm text-green-800 animate-fade-in">
+                      🎉 <strong>Agent authentication complete!</strong> Ready for secure transactions.
+                    </div>
+                  )}
+
+                  {/* TWO BUTTONS - Seller and Buyer Agent Cards */}
+                  {sellerAgenticStep === 'buyer-agent-verified' && (
+                    <div className="space-y-4 pt-4 border-t-2 border-slate-200 animate-fade-in">
+                      <h4 className="text-base font-semibold text-slate-900">View Agent Cards</h4>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Seller Agent Card Button */}
+                        <button
+                          onClick={() => setShowSellerAgentCardDetails(!showSellerAgentCardDetails)}
+                          className="p-4 bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-lg transition-all text-left"
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <User className="w-5 h-5 text-green-600" />
+                            <p className="text-sm font-bold text-green-900">Seller Agent</p>
+                          </div>
+                          <p className="text-xs text-slate-600">Click to view details</p>
+                        </button>
+
+                        {/* Buyer Agent Card Button */}
+                        <button
+                          onClick={() => setShowBuyerAgentCardDetails(!showBuyerAgentCardDetails)}
+                          className="p-4 bg-blue-50 hover:bg-blue-100 border-2 border-blue-300 rounded-lg transition-all text-left"
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <Bot className="w-5 h-5 text-blue-600" />
+                            <p className="text-sm font-bold text-blue-900">Buyer Agent</p>
+                          </div>
+                          <p className="text-xs text-slate-600">Click to view details</p>
+                        </button>
                       </div>
 
-                      {/* Success Message */}
-                      {sellerAgenticStep === 'buyer-agent-verified' && (
-                        <div className="p-3 bg-green-50 border border-green-300 rounded-lg text-sm text-green-800 animate-fade-in">
-                          🎉 <strong>Agent authentication complete!</strong> Ready for secure transactions.
+                      {/* Seller Agent Card Details */}
+                      {showSellerAgentCardDetails && sellerAgentData && (
+                        <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg animate-fade-in">
+                          <div className="flex items-start justify-between mb-3">
+                            <h5 className="text-sm font-bold text-green-900">Seller Agent Details</h5>
+                            <button onClick={() => setShowSellerAgentCardDetails(false)}>
+                              <XCircle className="w-4 h-4 text-green-600 hover:text-green-800" />
+                            </button>
+                          </div>
+                          <div className="space-y-2 text-xs text-slate-700">
+                            <p><strong>Name:</strong> {sellerAgentData.name || sellerAgentData.alias}</p>
+                            <p><strong>Agent AID:</strong> <span className="break-all">{sellerAgentData.agentAID || 'N/A'}</span></p>
+                            <p><strong>OOR Role:</strong> {sellerAgentData.oorRole || sellerAgentData.engagementContextRole}</p>
+                            <p><strong>Time:</strong> {sellerAgentData.timestamp}</p>
+                          </div>
                         </div>
                       )}
 
-                      {/* TWO BUTTONS - Seller and Buyer Agent Cards */}
-                      {sellerAgenticStep === 'buyer-agent-verified' && (
-                        <div className="space-y-4 pt-4 border-t-2 border-slate-200 animate-fade-in">
-                          <h4 className="text-base font-semibold text-slate-900">View Agent Cards</h4>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            {/* Seller Agent Card Button */}
-                            <button
-                              onClick={() => setShowSellerAgentCardDetails(!showSellerAgentCardDetails)}
-                              className="p-4 bg-green-50 hover:bg-green-100 border-2 border-green-300 rounded-lg transition-all text-left"
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                <User className="w-5 h-5 text-green-600" />
-                                <p className="text-sm font-bold text-green-900">Seller Agent</p>
-                              </div>
-                              <p className="text-xs text-slate-600">Click to view details</p>
-                            </button>
-
-                            {/* Buyer Agent Card Button */}
-                            <button
-                              onClick={() => setShowBuyerAgentCardDetails(!showBuyerAgentCardDetails)}
-                              className="p-4 bg-blue-50 hover:bg-blue-100 border-2 border-blue-300 rounded-lg transition-all text-left"
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                <Bot className="w-5 h-5 text-blue-600" />
-                                <p className="text-sm font-bold text-blue-900">Buyer Agent</p>
-                              </div>
-                              <p className="text-xs text-slate-600">Click to view details</p>
+                      {/* Buyer Agent Card Details */}
+                      {showBuyerAgentCardDetails && buyerAgentFromSellerData && (
+                        <div className="p-4 bg-blue-50 border-2 border-blue-300 rounded-lg animate-fade-in">
+                          <div className="flex items-start justify-between mb-3">
+                            <h5 className="text-sm font-bold text-blue-900">Buyer Agent Details</h5>
+                            <button onClick={() => setShowBuyerAgentCardDetails(false)}>
+                              <XCircle className="w-4 h-4 text-blue-600 hover:text-blue-800" />
                             </button>
                           </div>
-
-                          {/* Seller Agent Card Details */}
-                          {showSellerAgentCardDetails && sellerAgentData && (
-                            <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg animate-fade-in">
-                              <div className="flex items-start justify-between mb-3">
-                                <h5 className="text-sm font-bold text-green-900">Seller Agent Details</h5>
-                                <button onClick={() => setShowSellerAgentCardDetails(false)}>
-                                  <XCircle className="w-4 h-4 text-green-600 hover:text-green-800" />
-                                </button>
-                              </div>
-                              <div className="space-y-2 text-xs text-slate-700">
-                                <p><strong>Name:</strong> {sellerAgentData.name || sellerAgentData.alias}</p>
-                                <p><strong>Agent AID:</strong> <span className="break-all">{sellerAgentData.agentAID || 'N/A'}</span></p>
-                                <p><strong>OOR Role:</strong> {sellerAgentData.oorRole || sellerAgentData.engagementContextRole}</p>
-                                <p><strong>Time:</strong> {sellerAgentData.timestamp}</p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Buyer Agent Card Details */}
-                          {showBuyerAgentCardDetails && buyerAgentFromSellerData && (
-                            <div className="p-4 bg-blue-50 border-2 border-blue-300 rounded-lg animate-fade-in">
-                              <div className="flex items-start justify-between mb-3">
-                                <h5 className="text-sm font-bold text-blue-900">Buyer Agent Details</h5>
-                                <button onClick={() => setShowBuyerAgentCardDetails(false)}>
-                                  <XCircle className="w-4 h-4 text-blue-600 hover:text-blue-800" />
-                                </button>
-                              </div>
-                              <div className="space-y-2 text-xs text-slate-700">
-                                <p><strong>Alias:</strong> {buyerAgentFromSellerData.alias}</p>
-                                <p><strong>Role:</strong> {buyerAgentFromSellerData.engagementContextRole}</p>
-                                <p><strong>Type:</strong> {buyerAgentFromSellerData.agentType}</p>
-                                <p><strong>Time:</strong> {buyerAgentFromSellerData.timestamp}</p>
-                              </div>
-                            </div>
-                          )}
+                          <div className="space-y-2 text-xs text-slate-700">
+                            <p><strong>Alias:</strong> {buyerAgentFromSellerData.alias}</p>
+                            <p><strong>Role:</strong> {buyerAgentFromSellerData.engagementContextRole}</p>
+                            <p><strong>Type:</strong> {buyerAgentFromSellerData.agentType}</p>
+                            <p><strong>Time:</strong> {buyerAgentFromSellerData.timestamp}</p>
+                          </div>
                         </div>
                       )}
                     </div>
                   )}
-                </>
+                </div>
               )}
             </div>
 
@@ -1709,7 +1372,6 @@ export default function VerificationFlow() {
                     <p>Type a command to start:</p>
                     <p className="text-xs mt-1">• fetch my agent</p>
                     <p className="text-xs">• fetch buyer agent</p>
-                    <p className="text-xs font-semibold text-purple-600">• send invoice</p>
                   </div>
                 )}
                 {sellerChatMessages.map((msg) => (
@@ -1738,7 +1400,7 @@ export default function VerificationFlow() {
                     value={sellerInputMessage}
                     onChange={(e) => setSellerInputMessage(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSellerSendMessage()}
-                    placeholder="Type a command... (try 'send invoice')"
+                    placeholder="Type a command..."
                     className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                   <button

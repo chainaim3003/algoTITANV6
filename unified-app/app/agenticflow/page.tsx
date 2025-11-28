@@ -373,27 +373,37 @@ export default function AgenticFlow() {
     if (agenticStep === 'seller-agent-fetched' && sellerAgentFromBuyerData && !sellerAgentVerified) {
       setTimeout(() => verifySellerAgent(), 1000)
     }
-  }, [agenticStep, sellerAgentFromBuyerData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agenticStep, sellerAgentFromBuyerData, sellerAgentVerified])
 
   useEffect(() => {
     if (sellerAgenticStep === 'buyer-agent-fetched' && buyerAgentFromSellerData && !buyerAgentVerified) {
       setTimeout(() => verifyBuyerAgentFromSeller(), 1000)
     }
-  }, [sellerAgenticStep, buyerAgentFromSellerData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerAgenticStep, buyerAgentFromSellerData, buyerAgentVerified])
+
+  // Track if we've already transitioned to business-ready to prevent duplicate messages
+  const buyerBusinessReadyRef = useRef(false)
+  const sellerBusinessReadyRef = useRef(false)
 
   useEffect(() => {
-    if (sellerAgentVerified && agenticStep === 'seller-agent-verified') {
+    if (sellerAgentVerified && agenticStep === 'seller-agent-verified' && !buyerBusinessReadyRef.current) {
+      buyerBusinessReadyRef.current = true
       setAgenticStep('business-ready')
       addMessage("✅ Ready for business! Type 'send po' to create a Purchase Order.", 'agent')
     }
-  }, [sellerAgentVerified])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerAgentVerified, agenticStep])
 
   useEffect(() => {
-    if (buyerAgentVerified && sellerAgenticStep === 'buyer-agent-verified') {
+    if (buyerAgentVerified && sellerAgenticStep === 'buyer-agent-verified' && !sellerBusinessReadyRef.current) {
+      sellerBusinessReadyRef.current = true
       setSellerAgenticStep('business-ready')
       addSellerMessage("✅ Ready for business! Waiting for buyer's messages.", 'agent')
     }
-  }, [buyerAgentVerified])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buyerAgentVerified, sellerAgenticStep])
 
   // ============================================
   // FETCH AGENT CARD ONLY (NO VERIFICATION)
