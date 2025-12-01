@@ -2,14 +2,14 @@
 ################################################################################
 # invoice-ipex-admit.sh - Admit IPEX grant for invoice credential
 #
-# Purpose: tommyBuyerAgent admits the IPEX grant from jupiterSalesAgent
+# Purpose: tommyBuyerAgent admits the IPEX grant from jupiterSellerAgent
 #          for the invoice credential
 #
 # Usage: ./invoice-ipex-admit.sh <RECEIVER_AGENT> <SENDER_AGENT>
 #
-# Example: ./invoice-ipex-admit.sh tommyBuyerAgent jupiterSalesAgent
+# Example: ./invoice-ipex-admit.sh tommyBuyerAgent jupiterSellerAgent
 #
-# Date: November 14, 2025
+# Date: November 27, 2025
 ################################################################################
 
 set -e
@@ -22,11 +22,8 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 RECEIVER_AGENT="${1:-tommyBuyerAgent}"
-SENDER_AGENT="${2:-jupiterSalesAgent}"
+SENDER_AGENT="${2:-jupiterSellerAgent}"
 ENV="${3:-docker}"
-
-# Passcodes
-RECEIVER_PASSCODE="AgentPass123"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  IPEX ADMIT: Invoice Credential${NC}"
@@ -36,14 +33,27 @@ echo "Receiver: $RECEIVER_AGENT"
 echo "Sender: $SENDER_AGENT"
 echo ""
 
+# Check if receiver's BRAN file exists
+RECEIVER_BRAN_FILE="./task-data/${RECEIVER_AGENT}-bran.txt"
+if [ ! -f "$RECEIVER_BRAN_FILE" ]; then
+    echo -e "${RED}ERROR: Receiver BRAN file not found: $RECEIVER_BRAN_FILE${NC}"
+    echo -e "${YELLOW}The agent must have been created with a unique BRAN.${NC}"
+    exit 1
+fi
+
+RECEIVER_BRAN=$(cat "$RECEIVER_BRAN_FILE")
+echo "Using receiver's unique BRAN: ${RECEIVER_BRAN:0:20}..."
+echo ""
+
 # Execute IPEX admit
 echo -e "${BLUE}→ Admitting IPEX grant...${NC}"
 
 docker compose exec -T tsx-shell tsx sig-wallet/src/tasks/invoice/invoice-ipex-admit.ts \
   "$ENV" \
-  "$RECEIVER_PASSCODE" \
+  "$RECEIVER_BRAN" \
   "$RECEIVER_AGENT" \
-  "$SENDER_AGENT"
+  "$SENDER_AGENT" \
+  "/task-data"
 
 if [ $? -eq 0 ]; then
     echo ""

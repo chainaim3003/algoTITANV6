@@ -16,17 +16,22 @@
       "invoiceNumber": "INV-2025-001",
       "invoiceDate": "2025-11-13T00:00:00Z",
       "dueDate": "2025-12-13T00:00:00Z",
-      "currency": "ALGO",
-      "totalAmount": 50000.00,
+      "sellerLEI": "3358004DXAMRWRUIYJ05",
+      "buyerLEI": "54930012QJWZMYHNJW95",
+      "currency": "USD",
+      "totalAmount": 100000.00,
       "lineItems": [
         {
-          "description": "Knitted Sweaters - Premium Collection",
-          "quantity": 1000,
-          "unitPrice": 50.00,
-          "amount": 50000.00
+          "description": "Textile Apparel",
+          "quantity": 10000,
+          "unitPrice": 10.00,
+          "amount": 100000.00
         }
       ],
-      "paymentTerms": "Net 30 days from invoice date",
+      "paymentTerms": {
+        "terms": "Net 30 days from invoice date",
+        "discountCurve": []
+      },
       "paymentMethod": "blockchain",
       "paymentChainID": "algorand",
       "paymentWalletAddress": "XQVKZ7MNMJH3ZHCVGKQY6RJVMZJ2ZKWXQO4HNBEXAMPLE",

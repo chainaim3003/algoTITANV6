@@ -14,6 +14,30 @@ SALLY_PASSCODE="${SALLY_PASSCODE:-4TBjjhmKu9oeDp49J7Xdy}"
 SALLY_PORT="${SALLY_PORT:-9723}"
 WEBHOOK_URL="${WEBHOOK_URL:-http://resource:9923}"
 
+# Function to wait for schema service OOBIs to be available
+wait_for_schema() {
+  echo "Waiting for schema service OOBIs to be available..."
+  local MAX_RETRIES=30
+  local RETRY_COUNT=0
+  local SCHEMA_URL="http://schema:7723/oobi/EBfdlu8R27Fbx-ehrqwImnK-8Cm79sqbAQ4MmvEAYqao"
+  
+  while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if wget --spider --quiet "$SCHEMA_URL" 2>/dev/null; then
+      echo "Schema service is ready!"
+      return 0
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo "Waiting for schema service... ($RETRY_COUNT/$MAX_RETRIES)"
+    sleep 2
+  done
+  
+  echo "ERROR: Schema service not available after $MAX_RETRIES attempts"
+  return 1
+}
+
+# Wait for schema service before proceeding
+wait_for_schema || exit 1
+
 if [ -z "${GEDA_PRE}" ]; then
   echo "GEDA_PRE auth AID is not set. Exiting."
   exit 1

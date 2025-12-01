@@ -6,8 +6,15 @@
 
 set -e
 
-AGENT_ALIAS="${1:-jupiterSalesAgent}"
+AGENT_ALIAS="${1:-jupiterSellerAgent}"
 REGISTRY_NAME="${2:-${AGENT_ALIAS}_INVOICE_REGISTRY}"
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
 
 # Source environment variables
 source ./task-scripts/workshop-env-vars.sh
@@ -17,18 +24,41 @@ echo "  Agent: $AGENT_ALIAS"
 echo "  Registry: $REGISTRY_NAME"
 echo ""
 
-# Agents don't use passcodes - pass empty string
+# Check if agent info exists
+if [ ! -f "./task-data/${AGENT_ALIAS}-info.json" ]; then
+    echo -e "${RED}ERROR: Agent info file not found: ./task-data/${AGENT_ALIAS}-info.json${NC}"
+    echo "The agent delegation must be completed before creating a registry."
+    exit 1
+fi
+
+# Check if BRAN file exists
+BRAN_FILE="./task-data/${AGENT_ALIAS}-bran.txt"
+if [ ! -f "$BRAN_FILE" ]; then
+    echo -e "${RED}ERROR: Agent BRAN file not found: $BRAN_FILE${NC}"
+    echo "The agent must have been created with a unique BRAN."
+    exit 1
+fi
+
+AGENT_BRAN=$(cat "$BRAN_FILE")
+echo "  Using agent's unique BRAN: ${AGENT_BRAN:0:20}..."
+echo ""
+
+# Create registry using the agent's unique BRAN
 docker compose exec -T tsx-shell tsx \
   sig-wallet/src/tasks/invoice/invoice-registry-create.ts \
   docker \
   "$AGENT_ALIAS" \
-  "" \
-  "$REGISTRY_NAME"
+  "$AGENT_BRAN" \
+  "$REGISTRY_NAME" \
+  "/task-data"
 
-# Save registry info
+# Verify registry info was created
 REGISTRY_INFO_FILE="./task-data/${AGENT_ALIAS}-invoice-registry-info.json"
-echo "{\"registryName\": \"$REGISTRY_NAME\", \"agentAlias\": \"$AGENT_ALIAS\"}" > "$REGISTRY_INFO_FILE"
-
-echo ""
-echo "✓ Invoice registry created successfully"
-echo "  Registry info: $REGISTRY_INFO_FILE"
+if [ -f "$REGISTRY_INFO_FILE" ]; then
+    echo ""
+    echo -e "${GREEN}✓ Invoice registry created successfully${NC}"
+    echo "  Registry info: $REGISTRY_INFO_FILE"
+    cat "$REGISTRY_INFO_FILE"
+else
+    echo -e "${YELLOW}Note: Registry info file may not have been created${NC}"
+fi
