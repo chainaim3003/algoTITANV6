@@ -17,14 +17,19 @@ app.use(cors());
 app.use(express.json());
 
 // Helper function to run verification script
-// scriptType: 'DEEP' or 'DEEP-EXT'
+// scriptType: 'DEEP', 'DEEP-EXT', or 'DEEP-EXT-CREDENTIAL'
 async function runVerification(agentName, oorHolderName, scriptType = 'DEEP') {
   try {
     console.log(`Starting ${scriptType} verification for: ${agentName}`);
     
-    const scriptName = scriptType === 'DEEP-EXT' 
-      ? 'test-agent-verification-DEEP-EXT.sh' 
-      : 'test-agent-verification-DEEP.sh';
+    let scriptName;
+    if (scriptType === 'DEEP-EXT-CREDENTIAL') {
+      scriptName = 'test-agent-verification-DEEP-credential.sh';
+    } else if (scriptType === 'DEEP-EXT') {
+      scriptName = 'test-agent-verification-DEEP-EXT.sh';
+    } else {
+      scriptName = 'test-agent-verification-DEEP.sh';
+    }
     const scriptPath = path.join(__dirname, '..', scriptName);
     // ADD --json flag to get structured output
     const command = `bash ${scriptPath} ${agentName} ${oorHolderName} docker --json`;
@@ -136,14 +141,18 @@ app.get('/health', (req, res) => {
 });
 
 // Verify Seller Agent endpoint
+// LEGACY: Use /api/buyer/verify/seller instead
 app.post('/api/verify/seller', async (req, res) => {
-  console.log('=== SELLER AGENT VERIFICATION REQUEST ===');
+  console.log('=== [LEGACY] SELLER AGENT VERIFICATION REQUEST ===');
+  console.log('WARNING: This endpoint is deprecated. Use /api/buyer/verify/seller instead.');
   
   try {
     const agentName = 'jupiterSellerAgent';
     const oorHolderName = 'Jupiter_Chief_Sales_Officer';
     
     const result = await runVerification(agentName, oorHolderName);
+    result.deprecated = true;
+    result.useInstead = '/api/buyer/verify/seller';
     
     const statusCode = result.success ? 200 : 400;
     console.log(`Verification result: ${result.success ? 'SUCCESS' : 'FAILED'}`);
@@ -155,20 +164,26 @@ app.post('/api/verify/seller', async (req, res) => {
       success: false,
       error: error.message,
       agent: 'jupiterSellerAgent',
+      deprecated: true,
+      useInstead: '/api/buyer/verify/seller',
       timestamp: new Date().toISOString()
     });
   }
 });
 
 // Verify Buyer Agent endpoint
+// LEGACY: Use /api/seller/verify/buyer instead
 app.post('/api/verify/buyer', async (req, res) => {
-  console.log('=== BUYER AGENT VERIFICATION REQUEST ===');
+  console.log('=== [LEGACY] BUYER AGENT VERIFICATION REQUEST ===');
+  console.log('WARNING: This endpoint is deprecated. Use /api/seller/verify/buyer instead.');
   
   try {
     const agentName = 'tommyBuyerAgent';
     const oorHolderName = 'Tommy_Chief_Procurement_Officer';
     
     const result = await runVerification(agentName, oorHolderName);
+    result.deprecated = true;
+    result.useInstead = '/api/seller/verify/buyer';
     
     const statusCode = result.success ? 200 : 400;
     console.log(`Verification result: ${result.success ? 'SUCCESS' : 'FAILED'}`);
@@ -180,6 +195,90 @@ app.post('/api/verify/buyer', async (req, res) => {
       success: false,
       error: error.message,
       agent: 'tommyBuyerAgent',
+      deprecated: true,
+      useInstead: '/api/seller/verify/buyer',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ============================================
+// STANDARD VERIFICATION ENDPOINTS (DEEP)
+// These are for cross-organization verification using DEEP script
+// URL Pattern: /api/{caller}/verify/{target}
+// - /api/buyer/verify/seller: Buyer verifies seller
+// - /api/seller/verify/buyer: Seller verifies buyer
+// ============================================
+
+// Buyer verifies Seller Agent (DEEP)
+app.post('/api/buyer/verify/seller', async (req, res) => {
+  console.log('=== BUYER -> SELLER VERIFICATION (DEEP) ===');
+  console.log('Caller: Buyer | Target: Seller');
+  
+  try {
+    const agentName = 'jupiterSellerAgent';
+    const oorHolderName = 'Jupiter_Chief_Sales_Officer';
+    
+    // Use DEEP script for standard verification
+    const result = await runVerification(agentName, oorHolderName, 'DEEP');
+    
+    // Add verification metadata
+    result.verificationType = 'STANDARD';
+    result.verificationScript = 'DEEP';
+    result.caller = 'buyer';
+    result.target = 'seller';
+    
+    const statusCode = result.success ? 200 : 400;
+    console.log(`Buyer->Seller Verification (DEEP): ${result.success ? 'SUCCESS' : 'FAILED'}`);
+    
+    res.status(statusCode).json(result);
+  } catch (error) {
+    console.error('Error in buyer->seller verification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      agent: 'jupiterSellerAgent',
+      verificationType: 'STANDARD',
+      verificationScript: 'DEEP',
+      caller: 'buyer',
+      target: 'seller',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Seller verifies Buyer Agent (DEEP)
+app.post('/api/seller/verify/buyer', async (req, res) => {
+  console.log('=== SELLER -> BUYER VERIFICATION (DEEP) ===');
+  console.log('Caller: Seller | Target: Buyer');
+  
+  try {
+    const agentName = 'tommyBuyerAgent';
+    const oorHolderName = 'Tommy_Chief_Procurement_Officer';
+    
+    // Use DEEP script for standard verification
+    const result = await runVerification(agentName, oorHolderName, 'DEEP');
+    
+    // Add verification metadata
+    result.verificationType = 'STANDARD';
+    result.verificationScript = 'DEEP';
+    result.caller = 'seller';
+    result.target = 'buyer';
+    
+    const statusCode = result.success ? 200 : 400;
+    console.log(`Seller->Buyer Verification (DEEP): ${result.success ? 'SUCCESS' : 'FAILED'}`);
+    
+    res.status(statusCode).json(result);
+  } catch (error) {
+    console.error('Error in seller->buyer verification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      agent: 'tommyBuyerAgent',
+      verificationType: 'STANDARD',
+      verificationScript: 'DEEP',
+      caller: 'seller',
+      target: 'buyer',
       timestamp: new Date().toISOString()
     });
   }
@@ -188,14 +287,15 @@ app.post('/api/verify/buyer', async (req, res) => {
 // ============================================
 // EXTERNAL VERIFICATION ENDPOINTS (DEEP-EXT)
 // These are for cross-organization verification
-// - /api/verify/ext/seller: Called by BUYER to verify seller externally
-// - /api/verify/ext/buyer: Called by SELLER to verify buyer externally
+// URL Pattern: /api/{caller}/verify/ext/{target}
+// - /api/buyer/verify/ext/seller: Buyer verifies seller externally
+// - /api/seller/verify/ext/buyer: Seller verifies buyer externally
 // ============================================
 
-// External Verify Seller Agent endpoint (called from buyer's verifier)
-app.post('/api/verify/ext/seller', async (req, res) => {
-  console.log('=== EXTERNAL SELLER AGENT VERIFICATION REQUEST (DEEP-EXT) ===');
-  console.log('Called from: Buyer Verifier');
+// Buyer verifies Seller Agent externally (DEEP-EXT)
+app.post('/api/buyer/verify/ext/seller', async (req, res) => {
+  console.log('=== BUYER -> SELLER VERIFICATION (DEEP-EXT) ===');
+  console.log('Caller: Buyer | Target: Seller');
   
   try {
     const agentName = 'jupiterSellerAgent';
@@ -207,29 +307,32 @@ app.post('/api/verify/ext/seller', async (req, res) => {
     // Add external verification metadata
     result.verificationType = 'EXTERNAL';
     result.verificationScript = 'DEEP-EXT';
-    result.calledFrom = 'buyer-verifier';
+    result.caller = 'buyer';
+    result.target = 'seller';
     
     const statusCode = result.success ? 200 : 400;
-    console.log(`External Verification result: ${result.success ? 'SUCCESS' : 'FAILED'}`);
+    console.log(`Buyer->Seller Verification: ${result.success ? 'SUCCESS' : 'FAILED'}`);
     
     res.status(statusCode).json(result);
   } catch (error) {
-    console.error('Error in external seller verification endpoint:', error);
+    console.error('Error in buyer->seller verification:', error);
     res.status(500).json({
       success: false,
       error: error.message,
       agent: 'jupiterSellerAgent',
       verificationType: 'EXTERNAL',
       verificationScript: 'DEEP-EXT',
+      caller: 'buyer',
+      target: 'seller',
       timestamp: new Date().toISOString()
     });
   }
 });
 
-// External Verify Buyer Agent endpoint (called from seller's verifier)
-app.post('/api/verify/ext/buyer', async (req, res) => {
-  console.log('=== EXTERNAL BUYER AGENT VERIFICATION REQUEST (DEEP-EXT) ===');
-  console.log('Called from: Seller Verifier');
+// Seller verifies Buyer Agent externally (DEEP-EXT)
+app.post('/api/seller/verify/ext/buyer', async (req, res) => {
+  console.log('=== SELLER -> BUYER VERIFICATION (DEEP-EXT) ===');
+  console.log('Caller: Seller | Target: Buyer');
   
   try {
     const agentName = 'tommyBuyerAgent';
@@ -241,20 +344,147 @@ app.post('/api/verify/ext/buyer', async (req, res) => {
     // Add external verification metadata
     result.verificationType = 'EXTERNAL';
     result.verificationScript = 'DEEP-EXT';
-    result.calledFrom = 'seller-verifier';
+    result.caller = 'seller';
+    result.target = 'buyer';
     
     const statusCode = result.success ? 200 : 400;
-    console.log(`External Verification result: ${result.success ? 'SUCCESS' : 'FAILED'}`);
+    console.log(`Seller->Buyer Verification: ${result.success ? 'SUCCESS' : 'FAILED'}`);
     
     res.status(statusCode).json(result);
   } catch (error) {
-    console.error('Error in external buyer verification endpoint:', error);
+    console.error('Error in seller->buyer verification:', error);
     res.status(500).json({
       success: false,
       error: error.message,
       agent: 'tommyBuyerAgent',
       verificationType: 'EXTERNAL',
       verificationScript: 'DEEP-EXT',
+      caller: 'seller',
+      target: 'buyer',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ============================================
+// INVOICE CREDENTIAL VERIFICATION ENDPOINT
+// Buyer verifies Seller's Invoice with Credential (DEEP-EXT-CREDENTIAL)
+// This endpoint performs:
+//   1. Deep agent delegation verification
+//   2. Credential query from KERIA
+//   3. Credential validation and proof verification
+// ============================================
+app.post('/api/buyer/verify/sellerInvoice', async (req, res) => {
+  console.log('=== BUYER -> SELLER INVOICE CREDENTIAL VERIFICATION (DEEP-EXT-CREDENTIAL) ===');
+  console.log('Caller: Buyer | Target: Seller Invoice Credential');
+  
+  try {
+    const agentName = 'jupiterSellerAgent';
+    const oorHolderName = 'Jupiter_Chief_Sales_Officer';
+    
+    // Use DEEP-EXT-CREDENTIAL script for invoice credential verification
+    // This includes: agent delegation + credential query + credential validation
+    const result = await runVerification(agentName, oorHolderName, 'DEEP-EXT-CREDENTIAL');
+    
+    // Add invoice credential verification metadata
+    result.verificationType = 'INVOICE_CREDENTIAL';
+    result.verificationScript = 'DEEP-EXT-CREDENTIAL';
+    result.caller = 'buyer';
+    result.target = 'sellerInvoice';
+    result.verificationSteps = [
+      'agent_delegation_verification',
+      'credential_query_from_keria',
+      'credential_validation_and_proof'
+    ];
+    
+    const statusCode = result.success ? 200 : 400;
+    console.log(`Buyer->SellerInvoice Credential Verification: ${result.success ? 'SUCCESS' : 'FAILED'}`);
+    
+    res.status(statusCode).json(result);
+  } catch (error) {
+    console.error('Error in buyer->sellerInvoice credential verification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      agent: 'jupiterSellerAgent',
+      verificationType: 'INVOICE_CREDENTIAL',
+      verificationScript: 'DEEP-EXT-CREDENTIAL',
+      caller: 'buyer',
+      target: 'sellerInvoice',
+      verificationSteps: [
+        'agent_delegation_verification',
+        'credential_query_from_keria',
+        'credential_validation_and_proof'
+      ],
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ============================================
+// LEGACY ENDPOINTS (kept for backward compatibility)
+// Will be deprecated in future versions
+// ============================================
+
+// Legacy: External Verify Seller Agent endpoint
+app.post('/api/verify/ext/seller', async (req, res) => {
+  console.log('=== [LEGACY] EXTERNAL SELLER VERIFICATION (DEEP-EXT) ===');
+  console.log('WARNING: This endpoint is deprecated. Use /api/buyer/verify/ext/seller instead.');
+  
+  try {
+    const agentName = 'jupiterSellerAgent';
+    const oorHolderName = 'Jupiter_Chief_Sales_Officer';
+    
+    const result = await runVerification(agentName, oorHolderName, 'DEEP-EXT');
+    
+    result.verificationType = 'EXTERNAL';
+    result.verificationScript = 'DEEP-EXT';
+    result.calledFrom = 'buyer-verifier';
+    result.deprecated = true;
+    result.useInstead = '/api/buyer/verify/ext/seller';
+    
+    const statusCode = result.success ? 200 : 400;
+    res.status(statusCode).json(result);
+  } catch (error) {
+    console.error('Error in legacy seller verification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      agent: 'jupiterSellerAgent',
+      deprecated: true,
+      useInstead: '/api/buyer/verify/ext/seller',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Legacy: External Verify Buyer Agent endpoint
+app.post('/api/verify/ext/buyer', async (req, res) => {
+  console.log('=== [LEGACY] EXTERNAL BUYER VERIFICATION (DEEP-EXT) ===');
+  console.log('WARNING: This endpoint is deprecated. Use /api/seller/verify/ext/buyer instead.');
+  
+  try {
+    const agentName = 'tommyBuyerAgent';
+    const oorHolderName = 'Tommy_Chief_Procurement_Officer';
+    
+    const result = await runVerification(agentName, oorHolderName, 'DEEP-EXT');
+    
+    result.verificationType = 'EXTERNAL';
+    result.verificationScript = 'DEEP-EXT';
+    result.calledFrom = 'seller-verifier';
+    result.deprecated = true;
+    result.useInstead = '/api/seller/verify/ext/buyer';
+    
+    const statusCode = result.success ? 200 : 400;
+    res.status(statusCode).json(result);
+  } catch (error) {
+    console.error('Error in legacy buyer verification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      agent: 'tommyBuyerAgent',
+      deprecated: true,
+      useInstead: '/api/seller/verify/ext/buyer',
       timestamp: new Date().toISOString()
     });
   }
@@ -325,9 +555,17 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔐 Seller verification: POST http://localhost:${PORT}/api/verify/seller`);
   console.log(`🔐 Buyer verification: POST http://localhost:${PORT}/api/verify/buyer`);
   console.log('');
-  console.log('External Verification (DEEP-EXT) - For Cross-Org A2A:');
-  console.log(`🔐 Ext Seller verification: POST http://localhost:${PORT}/api/verify/ext/seller`);
-  console.log(`🔐 Ext Buyer verification: POST http://localhost:${PORT}/api/verify/ext/buyer`);
+  console.log('Cross-Org Verification (DEEP-EXT) - Pattern: /api/{caller}/verify/ext/{target}');
+  console.log(`🔐 Buyer->Seller: POST http://localhost:${PORT}/api/buyer/verify/ext/seller`);
+  console.log(`🔐 Seller->Buyer: POST http://localhost:${PORT}/api/seller/verify/ext/buyer`);
+  console.log('');
+  console.log('Invoice Credential Verification (DEEP-EXT-CREDENTIAL):');
+  console.log(`🔐 Buyer->SellerInvoice: POST http://localhost:${PORT}/api/buyer/verify/sellerInvoice`);
+  console.log('   → Runs: agent delegation + credential query + credential validation');
+  console.log('');
+  console.log('Legacy Endpoints (deprecated):');
+  console.log(`⚠️  /api/verify/ext/seller -> use /api/buyer/verify/ext/seller`);
+  console.log(`⚠️  /api/verify/ext/buyer -> use /api/seller/verify/ext/buyer`);
   console.log('='.repeat(60));
   console.log('Ready to accept verification requests...');
   console.log('');

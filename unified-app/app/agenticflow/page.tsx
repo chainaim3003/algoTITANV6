@@ -490,10 +490,12 @@ export default function AgenticFlow() {
       }
 
       // DEEP-EXT: Use external verification endpoints for cross-org A2A
-      // Verify the COUNTERPARTY (the other party's agent)
+      // URL Pattern: /api/{caller}/verify/ext/{target}
+      // - When verifying buyer counterparty -> Seller is calling
+      // - When verifying seller counterparty -> Buyer is calling
       const verifyEndpoint = counterpartyType === 'buyer' 
-        ? `${API_BASE_URL}/api/verify/ext/buyer`
-        : `${API_BASE_URL}/api/verify/ext/seller`
+        ? `${API_BASE_URL}/api/seller/verify/ext/buyer`
+        : `${API_BASE_URL}/api/buyer/verify/ext/seller`
 
       console.log(`🔐 Calling DEEP-EXT verification for ${counterpartyType}: ${verifyEndpoint}`)
       

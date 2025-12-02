@@ -101,3 +101,13 @@ export async function approveDelegation(dgrClient: SignifyClient, dgrName: strin
     const opResp = await waitOperation(dgrClient, await apprDelRes.op());
     return opResp.done;
 }
+
+/**
+ * Get an AID by name from the client
+ * @param client SignifyClient instance
+ * @param name AID name to retrieve
+ */
+export async function getAID(client: SignifyClient, name: string) {
+    const aid = await client.identifiers().get(name);
+    return aid;
+}

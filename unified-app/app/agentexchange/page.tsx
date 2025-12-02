@@ -462,8 +462,9 @@ export default function VerificationFlow() {
     }
 
     try {
-      // DEEP-EXT: Use external verification for cross-org A2A
-      const response = await fetch(`${API_BASE_URL}/api/verify/ext/seller`, {
+      // DEEP-EXT: Buyer verifies Seller
+      // URL Pattern: /api/{caller}/verify/ext/{target}
+      const response = await fetch(`${API_BASE_URL}/api/buyer/verify/ext/seller`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
@@ -636,8 +637,9 @@ export default function VerificationFlow() {
     }
 
     try {
-      // DEEP-EXT: Use external verification for cross-org A2A
-      const response = await fetch(`${API_BASE_URL}/api/verify/ext/buyer`, {
+      // DEEP-EXT: Seller verifies Buyer
+      // URL Pattern: /api/{caller}/verify/ext/{target}
+      const response = await fetch(`${API_BASE_URL}/api/seller/verify/ext/buyer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })
@@ -716,32 +718,47 @@ export default function VerificationFlow() {
       setBuyerAgentFromSellerData(buyerCard)
       addSellerMessage("✅ Buyer agent card fetched!", 'agent')
 
-      // Step 4: DEEP-EXT Verification (REAL API CALL)
+      // Step 4: DEEP-EXT-CREDENTIAL Invoice Verification (REAL API CALL)
+      // This calls /api/buyer/verify/sellerInvoice which runs:
+      //   1. Agent delegation verification
+      //   2. Credential query from KERIA
+      //   3. Credential validation and proof verification
       await new Promise(resolve => setTimeout(resolve, 500))
       setInvoiceFlowStep('validating-invoice')
-      addSellerMessage("🔐 Verifying buyer via DEEP-EXT cross-org verification...", 'agent')
+      addSellerMessage("🔐 Verifying invoice credential via DEEP-EXT-CREDENTIAL...", 'agent')
+      addSellerMessage("   → Agent delegation verification", 'agent')
+      addSellerMessage("   → Credential query from KERIA", 'agent')
+      addSellerMessage("   → Credential validation & proof", 'agent')
 
       if (USE_MOCK_VERIFICATION) {
         await new Promise(resolve => setTimeout(resolve, 2000))
         setBuyerAgentVerified(true)
-        addSellerMessage("✅ [MOCK] Buyer agent verified!", 'agent')
+        addSellerMessage("✅ [MOCK] Invoice credential verified!", 'agent')
       } else {
-        console.log('🔐 [INVOICE FLOW] Calling DEEP-EXT verification: /api/verify/ext/buyer')
+        // DEEP-EXT-CREDENTIAL: Buyer verifies Seller Invoice Credential
+        // This endpoint performs full credential verification
+        console.log('🔐 [INVOICE FLOW] Calling DEEP-EXT-CREDENTIAL verification: /api/buyer/verify/sellerInvoice')
         
-        const verifyResponse = await fetch(`${API_BASE_URL}/api/verify/ext/buyer`, {
+        const verifyResponse = await fetch(`${API_BASE_URL}/api/buyer/verify/sellerInvoice`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         })
 
         const verifyResult = await verifyResponse.json()
+        
+        console.log('📝 [INVOICE FLOW] Credential verification result:', verifyResult)
 
         if (!verifyResult.success) {
-          throw new Error(verifyResult.error || 'Buyer verification failed')
+          throw new Error(verifyResult.error || 'Invoice credential verification failed')
         }
 
-        console.log('✅ [INVOICE FLOW] Buyer DEEP-EXT verification passed!')
+        console.log('✅ [INVOICE FLOW] Invoice credential DEEP-EXT-CREDENTIAL verification passed!')
         setBuyerAgentVerified(true)
-        addSellerMessage("✅ Buyer agent DEEP-EXT verification passed!", 'agent')
+        addSellerMessage("✅ Invoice credential verified!", 'agent')
+        addSellerMessage(`   Script: ${verifyResult.verificationScript}`, 'agent')
+        if (verifyResult.verificationSteps) {
+          addSellerMessage(`   Steps completed: ${verifyResult.verificationSteps.length}`, 'agent')
+        }
       }
 
       // Step 5: Process Payment (only after successful verification)
@@ -859,8 +876,9 @@ export default function VerificationFlow() {
     }
 
     try {
-      // DEEP-EXT: Use external verification for cross-org A2A
-      const response = await fetch(`${API_BASE_URL}/api/verify/ext/buyer`, {
+      // DEEP-EXT: Seller verifies Buyer
+      // URL Pattern: /api/{caller}/verify/ext/{target}
+      const response = await fetch(`${API_BASE_URL}/api/seller/verify/ext/buyer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       })

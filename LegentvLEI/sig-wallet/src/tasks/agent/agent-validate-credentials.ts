@@ -1,6 +1,5 @@
 import fs from "fs";
-import { getOrCreateClient } from "../../client/identifiers.js";
-import { getAID } from "../../client/identifiers.js";
+import { getOrCreateClient, getAID } from "../../client/identifiers.js";
 
 /**
  * Validate all credentials from KERIA agent
@@ -66,7 +65,7 @@ try {
             timestamp: new Date().toISOString()
         };
         
-        const outputPath = `./task-data/${agentName}-credential-validation-results.json`;
+        const outputPath = `/task-data/${agentName}-credential-validation-results.json`;
         await fs.promises.writeFile(outputPath, JSON.stringify(validationResults, null, 2));
         
         process.exit(0);
@@ -264,7 +263,7 @@ try {
         timestamp: new Date().toISOString()
     };
     
-    const outputPath = `./task-data/${agentName}-credential-validation-results.json`;
+    const outputPath = `/task-data/${agentName}-credential-validation-results.json`;
     await fs.promises.writeFile(outputPath, JSON.stringify(validationResults, null, 2));
     console.log(`✓ Validation results saved to ${outputPath}`);
     console.log(``);
