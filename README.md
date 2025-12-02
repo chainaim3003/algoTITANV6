@@ -25,6 +25,10 @@ This document provides a **complete step-by-step guide** to set up, clean, and d
 youtube link for reference:
 https://www.youtube.com/watch?v=tgHEHFWF9Wc&t=2s
 
+HD video ( >50 MB)
+
+https://youtu.be/TPvagFJ7rT8
+
 
 reference materials:
 
