@@ -6,7 +6,9 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "serve-cards": "node serve-agent-cards.js",
+    "dev:all": "npm run serve-cards & npm run dev"
   },
   "dependencies": {
     "@algorandfoundation/algokit-utils": "^9.1.2",

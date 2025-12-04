@@ -4,20 +4,29 @@
  * Agent Card Generator
  * 
  * Generates complete agent cards from vLEI workflow output data.
- * This script reads the generated JSON files and agent card template
- * to produce complete agent cards with real AIDs and credentials.
+ * This script reads the generated JSON files from task-data/
+ * to produce agent cards with real AIDs from the 4C workflow.
+ * 
+ * Key fields for DEEP-EXT verification:
+ *   - vLEImetadata.agentName: Used as parameter for DEEP-EXT.sh
+ *   - vLEImetadata.oorHolderName: Used as parameter for DEEP-EXT.sh
  * 
  * Usage: node generate-agent-cards.js
+ * Called automatically at the end of run-all-buyerseller-4C-with-agents.sh
  */
 
 const fs = require('fs');
 const path = require('path');
 
-// File paths
-const CONFIG_FILE = './appconfig/configBuyerSellerAIAgent1.json';
-const TASK_DATA_DIR = './task-data';
-const AGENT_CARD_TEMPLATE = './agentcard.json';
-const OUTPUT_DIR = './agent-cards';
+// File paths - use __dirname for relative paths from script location
+// Script is in: LegentvLEI/
+// Target is: algoTITANV6/Legent/A2A/agent-cards (one level up from LegentvLEI)
+const SCRIPT_DIR = __dirname;  // Directory where this script is located
+const CONFIG_FILE = path.join(SCRIPT_DIR, 'appconfig', 'configBuyerSellerAIAgent1.json');
+const TASK_DATA_DIR = path.join(SCRIPT_DIR, 'task-data');
+// Output to A2A/agent-cards directory for serving via well-known URLs
+// Relative path: ../Legent/A2A/agent-cards (from LegentvLEI/ to algoTITANV6/Legent/A2A/agent-cards)
+const OUTPUT_DIR = path.join(SCRIPT_DIR, '..', 'Legent', 'A2A', 'agent-cards');
 
 // Read configuration
 function readConfig() {
@@ -185,14 +194,19 @@ function generateAgentCard(config, org, person, agent) {
     ],
     extensions: {
       gleifIdentity: {
+        // NOTE: officialRole and engagementRole REMOVED
+        // These are not needed - DEEP-EXT uses agentName and oorHolderName from vLEImetadata
         lei: org.lei,
         legalEntityName: org.name,
         registryName: org.registryName,
-        qvi: qviInfo ? qviInfo.aid : "QVI_AID_PLACEHOLDER",
-        officialRole: person.officialRole,
-        engagementRole: isJupiter ? "Seller Agent" : "Buyer Agent"
+        qvi: qviInfo ? qviInfo.aid : "QVI_AID_PLACEHOLDER"
       },
       vLEImetadata: {
+        // CRITICAL: These two fields are used by DEEP-EXT.sh for verification
+        // They are passed as parameters: DEEP-EXT.sh <agentName> <oorHolderName>
+        agentName: agent.alias,           // e.g., "jupiterSellerAgent" or "tommyBuyerAgent"
+        oorHolderName: person.alias,      // e.g., "Jupiter_Chief_Sales_Officer" or "Tommy_Chief_Procurement_Officer"
+        
         // Real AIDs from generated data
         delegatorAID: personInfo.aid,
         delegateeAID: agentInfo.aid,
@@ -207,16 +221,14 @@ function generateAgentCard(config, org, person, agent) {
         leAID: leInfo.aid,
         leOOBI: leInfo.oobi,
         
-        // Verification path
+        // Verification path (informational only)
         verificationPath: [
           "GLEIF_ROOT → QVI",
           `QVI → ${org.name} → ${person.legalName} → ${agent.alias}`
-        ],
+        ]
         
-        // Status and timestamp
-        status: "verified",
-        verificationEndpoint: "http://vlei-verification:9723/verify/agent-delegation",
-        timestamp: new Date().toISOString()
+        // NOTE: REMOVED status, verificationEndpoint, timestamp
+        // These were extraneous - verification is done via DEEP-EXT using agentName/oorHolderName
       },
       gleifVerification: {
         gleifVerificationEndpoint: `https://gleif.org/api/v1/lei/${org.lei}`
@@ -231,6 +243,8 @@ function generateAgentCard(config, org, person, agent) {
   };
   
   console.log(`✓ Agent card generated for ${agent.alias}`);
+  console.log(`  agentName: ${agent.alias}`);
+  console.log(`  oorHolderName: ${person.alias}`);
   console.log(`  Agent AID: ${agentInfo.aid}`);
   console.log(`  Delegator AID: ${personInfo.aid}`);
   console.log(`  LEI: ${org.lei}`);
@@ -242,6 +256,8 @@ function generateAgentCard(config, org, person, agent) {
 function main() {
   console.log('═══════════════════════════════════════════════');
   console.log('  vLEI Agent Card Generator');
+  console.log(`  Script location: ${SCRIPT_DIR}`);
+  console.log(`  Output: ${OUTPUT_DIR}`);
   console.log('═══════════════════════════════════════════════\n');
   
   // Ensure output directory exists
@@ -284,6 +300,10 @@ function main() {
   console.log(`  ✅ Generation Complete`);
   console.log(`  Generated ${generatedCount} agent card(s)`);
   console.log(`  Output directory: ${OUTPUT_DIR}`);
+  console.log('');
+  console.log('  Key fields for DEEP-EXT verification:');
+  console.log('    - vLEImetadata.agentName');
+  console.log('    - vLEImetadata.oorHolderName');
   console.log('═══════════════════════════════════════════════\n');
 }
 

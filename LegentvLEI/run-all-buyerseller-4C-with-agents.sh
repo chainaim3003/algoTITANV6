@@ -1066,11 +1066,43 @@ for ((org_idx=0; org_idx<$ORG_COUNT; org_idx++)); do
 done
 echo ""
 
+# ============================================================
+# GENERATE AGENT CARDS
+# ============================================================
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${YELLOW}  GENERATING AGENT CARDS${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${WHITE}Generating agent cards with KERI identifiers from this workflow...${NC}"
+echo ""
+
+# Run the agent card generator
+if [ -f "./generate-agent-cards.js" ]; then
+    node ./generate-agent-cards.js
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Agent cards generated successfully${NC}"
+        echo ""
+        echo -e "${CYAN}Agent Card Output:${NC}"
+        echo "  • jupiterSellerAgent-card.json → ../Legent/A2A/agent-cards/"
+        echo "  • tommyBuyerAgent-card.json → ../Legent/A2A/agent-cards/"
+        echo ""
+        echo -e "${CYAN}Key fields for DEEP-EXT verification:${NC}"
+        echo "  • vLEImetadata.agentName (passed to DEEP-EXT.sh)"
+        echo "  • vLEImetadata.oorHolderName (passed to DEEP-EXT.sh)"
+    else
+        echo -e "${RED}✗ Agent card generation failed${NC}"
+    fi
+else
+    echo -e "${RED}✗ generate-agent-cards.js not found${NC}"
+fi
+echo ""
+
 echo -e "${BLUE}📋 Next Steps:${NC}"
 echo "  1. Verify invoice credential in tommyBuyerAgent's KERIA"
 echo "  2. Query invoice credentials: ./task-scripts/invoice/invoice-query.sh"
 echo "  3. Present invoice to verifier if needed"
 echo "  4. Implement credential revocation workflow"
+echo "  5. Start agent card servers (ports 8080, 9090) to serve well-known URLs"
 echo ""
 
 echo -e "${RED}⚠️  SECURITY WARNINGS:${NC}"

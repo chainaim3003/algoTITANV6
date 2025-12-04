@@ -43,6 +43,11 @@ import {
 const USE_MOCK_VERIFICATION = false // DEEP-EXT: Always use real API calls
 const API_BASE_URL = 'http://localhost:4000'
 
+// Agent Card URLs - served by the actual agent servers
+// Buyer Agent (port 9090) and Seller Agent (port 8080) must be running!
+const BUYER_AGENT_CARD_URL = 'http://localhost:9090/.well-known/agent-card.json'
+const SELLER_AGENT_CARD_URL = 'http://localhost:8080/.well-known/agent-card.json'
+
 // Get marketplace fee from environment (percentage like 0.25) and convert to decimal (0.0025)
 const MARKETPLACE_FEE = parseFloat(process.env.NEXT_PUBLIC_MARKETPLACE_FEE || '0.25')
 const PLATFORM_FEE_PERCENTAGE = MARKETPLACE_FEE / 100 // Convert 0.25% to 0.0025
@@ -538,8 +543,8 @@ export default function AgenticFlow() {
     
     // Fetch the SENDER's agent card and verify via DEEP-EXT
     const senderAgentUrl = senderType === 'buyer'
-      ? 'http://localhost:9090/.well-known/agent-card.json'
-      : 'http://localhost:8080/.well-known/agent-card.json'
+      ? BUYER_AGENT_CARD_URL
+      : SELLER_AGENT_CARD_URL
 
     const result = await fetchAndVerifyCounterpartyAgent(senderType, senderAgentUrl)
 
@@ -697,7 +702,7 @@ export default function AgenticFlow() {
     addMessage("🔄 Fetching my agent...", 'agent')
 
     // Use fetchAgentCardOnly - no DEEP-EXT verification for own agent
-    const result = await fetchAgentCardOnly('http://localhost:9090/.well-known/agent-card.json')
+    const result = await fetchAgentCardOnly(BUYER_AGENT_CARD_URL)
     
     if (result.success && result.agentCard) {
       setBuyerAgentData(result.agentCard)
@@ -715,7 +720,7 @@ export default function AgenticFlow() {
     addMessage("🔄 Fetching seller agent...", 'agent')
 
     // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
-    const result = await fetchAndVerifyCounterpartyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    const result = await fetchAndVerifyCounterpartyAgent('seller', SELLER_AGENT_CARD_URL)
     
     if (result.success && result.agentCard) {
       setSellerAgentFromBuyerData(result.agentCard)
@@ -733,7 +738,7 @@ export default function AgenticFlow() {
     addMessage("🔐 Verifying seller agent via DEEP-EXT...", 'agent')
 
     // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
-    const result = await fetchAndVerifyCounterpartyAgent('seller', 'http://localhost:8080/.well-known/agent-card.json')
+    const result = await fetchAndVerifyCounterpartyAgent('seller', SELLER_AGENT_CARD_URL)
     
     if (result.success && result.agentCard?.verified) {
       setSellerAgentVerified(true)
@@ -762,7 +767,7 @@ export default function AgenticFlow() {
     addSellerMessage("🔄 Fetching my agent...", 'agent')
 
     // Use fetchAgentCardOnly - no DEEP-EXT verification for own agent
-    const result = await fetchAgentCardOnly('http://localhost:8080/.well-known/agent-card.json')
+    const result = await fetchAgentCardOnly(SELLER_AGENT_CARD_URL)
     
     if (result.success && result.agentCard) {
       setSellerAgentData(result.agentCard)
@@ -780,7 +785,7 @@ export default function AgenticFlow() {
     addSellerMessage("🔄 Fetching buyer agent...", 'agent')
 
     // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
-    const result = await fetchAndVerifyCounterpartyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    const result = await fetchAndVerifyCounterpartyAgent('buyer', BUYER_AGENT_CARD_URL)
     
     if (result.success && result.agentCard) {
       setBuyerAgentFromSellerData(result.agentCard)
@@ -798,7 +803,7 @@ export default function AgenticFlow() {
     addSellerMessage("🔐 Verifying buyer agent via DEEP-EXT...", 'agent')
 
     // Use fetchAndVerifyCounterpartyAgent - DEEP-EXT verification for counterparty
-    const result = await fetchAndVerifyCounterpartyAgent('buyer', 'http://localhost:9090/.well-known/agent-card.json')
+    const result = await fetchAndVerifyCounterpartyAgent('buyer', BUYER_AGENT_CARD_URL)
     
     if (result.success && result.agentCard?.verified) {
       setBuyerAgentVerified(true)
